@@ -1,4 +1,4 @@
-# gRPC
+# gRPC Kit
 
 This repository contains helpers working with gRPC.
 
