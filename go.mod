@@ -1,4 +1,4 @@
-module chainguard.dev/go-grpc
+module chainguard.dev/go-grpc-kit
 
 go 1.17
 
