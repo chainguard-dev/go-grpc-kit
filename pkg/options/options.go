@@ -30,7 +30,7 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 		if delegate.URL().Port() != "" {
 			port = delegate.URL().Port()
 		}
-		return delegate.URL().Hostname() + ":" + port, []grpc.DialOption{
+		return net.JoinHostPort(delegate.URL().Hostname(), port), []grpc.DialOption{
 			grpc.WithBlock(),
 			grpc.WithInsecure(),
 		}
@@ -40,7 +40,7 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 		if delegate.URL().Port() != "" {
 			port = delegate.URL().Port()
 		}
-		return delegate.URL().Hostname() + ":" + port, []grpc.DialOption{
+		return net.JoinHostPort(delegate.URL().Hostname(), port), []grpc.DialOption{
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
