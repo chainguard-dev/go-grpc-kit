@@ -8,7 +8,10 @@ package options
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
+	"math/rand"
 	"net"
+	"sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -16,10 +19,37 @@ import (
 )
 
 // ListenerForTest is to support bufnet in our testing.
-var ListenerForTest interface {
+var ListenerForTest DialableListener
+
+type DialableListener interface {
 	net.Listener
 
 	Dial() (net.Conn, error)
+}
+
+var listenersForTest sync.Map
+
+// Register a test listener and get a provided scheme.
+func RegisterListenerForTest(listener DialableListener) string {
+	for {
+		scheme := fmt.Sprintf("test%d", rand.Uint64())
+		if _, conflicted := listenersForTest.LoadOrStore(scheme, listener); !conflicted {
+			return scheme
+		}
+	}
+}
+
+// Unregister a test listener.
+func UnregisterTestListener(scheme string) {
+	listenersForTest.Delete(scheme)
+}
+
+func getTestListener(scheme string) (DialableListener, bool) {
+	v, ok := listenersForTest.Load(scheme)
+	if !ok {
+		return nil, ok
+	}
+	return v.(DialableListener), true
 }
 
 func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
@@ -56,6 +86,15 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 		}
 
 	default:
-		panic("unreachable for valid delegates.")
+		listener, ok := getTestListener(delegate.Scheme)
+		if !ok {
+			panic("unreachable for valid delegates.")
+		}
+		return delegate.Scheme, []grpc.DialOption{
+			grpc.WithInsecure(),
+			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+				return listener.Dial()
+			}),
+		}
 	}
 }
