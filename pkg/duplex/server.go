@@ -8,10 +8,13 @@ package duplex
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
@@ -59,6 +62,7 @@ func New(port int, opts ...interface{}) *Duplex {
 			panic(fmt.Errorf("unknown type: %T", o))
 		}
 	}
+
 	// Create the Duplex Server.
 	d := &Duplex{
 		Server: grpc.NewServer(gOpts...),
@@ -90,4 +94,20 @@ func (d *Duplex) RegisterHandler(ctx context.Context, fn RegisterHandlerFromEndp
 func (d *Duplex) ListenAndServe(ctx context.Context) error {
 	addr := fmt.Sprintf(":%d", d.Port)
 	return http.ListenAndServe(addr, grpcHandlerFunc(d.Server, d.MUX))
+}
+
+// RegisterListenAndServe initializes Prometheus metrics and starts a HTTP
+// /metrics endpoint for exporting Prometheus metrics in the background.
+// Call this *after* all services have been registered.
+func (d *Duplex) RegisterListenAndServeMetrics(port int) {
+	grpc_prometheus.Register(d.Server)
+
+	go func(mport int) {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", mport), mux); err != nil {
+			log.Fatalf("listen and server for http /metrics = %v", err)
+		}
+	}(port)
 }
