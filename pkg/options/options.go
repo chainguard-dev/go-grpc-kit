@@ -13,8 +13,10 @@ import (
 	"net"
 	"sync"
 
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"knative.dev/pkg/apis"
 )
 
@@ -61,8 +63,9 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 			port = delegate.URL().Port()
 		}
 		return net.JoinHostPort(delegate.URL().Hostname(), port), []grpc.DialOption{
+			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithBlock(),
-			grpc.WithInsecure(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		}
 	case "https":
 		port := "443"
@@ -71,6 +74,7 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 			port = delegate.URL().Port()
 		}
 		return net.JoinHostPort(delegate.URL().Hostname(), port), []grpc.DialOption{
+			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
@@ -79,7 +83,7 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 
 	case "bufnet": // This is to support testing, it will not pass webhook validation.
 		return "bufnet", []grpc.DialOption{
-			grpc.WithInsecure(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 				return ListenerForTest.Dial()
 			}),
@@ -91,7 +95,7 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 			panic("unreachable for valid delegates.")
 		}
 		return delegate.Scheme, []grpc.DialOption{
-			grpc.WithInsecure(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 				return listener.Dial()
 			}),
