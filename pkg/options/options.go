@@ -54,6 +54,13 @@ func getTestListener(scheme string) (DialableListener, bool) {
 	return v.(DialableListener), true
 }
 
+// These are defined as global variables, so that folks can expose them as flags
+// in their entrypoints, if they choose.
+var (
+	RecvMsgSize = 100 * 1024 * 1024 // 100MB
+	SendMsgSize = 100 * 1024 * 1024 // 100MB
+)
+
 func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 	switch delegate.Scheme {
 	case "http":
@@ -66,6 +73,10 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(RecvMsgSize),
+				grpc.MaxCallSendMsgSize(SendMsgSize),
+			),
 		}
 	case "https":
 		port := "443"
@@ -79,6 +90,10 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
 			})),
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(RecvMsgSize),
+				grpc.MaxCallSendMsgSize(SendMsgSize),
+			),
 		}
 
 	case "bufnet": // This is to support testing, it will not pass webhook validation.
