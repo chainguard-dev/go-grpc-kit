@@ -37,14 +37,5 @@ jobs:
         check-latest: true
 
     - run: |
-        # We limit the depth to 3 mostly to avoid go.mod files that get pulled into `third_party` like some hashicorp repos.
-        for dir in $(find . -name go.mod -maxdepth 3 -exec dirname {} \; ); do
-          echo "::group:: $dir"
-          pushd $dir
-
-          # Exclude running unit tests against third_party repos.
-          go test -race $(go list ./... | grep -v third_party/)
-
-          popd
-          echo ::endgroup::
-        done
+        # Exclude running unit tests against third_party repos.
+        go test -race $(go list ./... | grep -v third_party/)

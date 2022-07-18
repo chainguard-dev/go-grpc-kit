@@ -104,8 +104,6 @@ jobs:
           exclude: |
             **/go.sum
             **/third_party/**
-            **/console-ui/import/**
-            **/cyclonedx.json
 
       - uses: get-woke/woke-action-reviewdog@v0
         if: ${{ always() }}

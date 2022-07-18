@@ -32,28 +32,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Set up Go 1.17.x
-      uses: actions/setup-go@v3
-      with:
-        go-version: 1.17
-        check-latest: true
-    # get the latest ko
-    - uses: imjasonh/setup-ko@v0.4
-
-    - name: Install Protoc
-      uses: arduino/setup-protoc@v1.1.2
-      with:
-        version: '3.19.4'
-
-    - name: Install Dependencies
-      run: |
-        cd $(mktemp -d)
-        go install github.com/google/go-licenses@ceb292363ec84358c9a276ef23aa0de893e59b84
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.0
-        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
-        go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.10.0
-        go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.10.0
-
     - name: Check out code
       uses: actions/checkout@v3
       with:
@@ -64,16 +42,7 @@ jobs:
       shell: bash
       working-directory: ./src/github.com/${{ github.repository }}
       run: |
-        # We limit the depth to 3 mostly to avoid go.mod files that get pulled into `third_party` like some hashicorp repos.
-        for dir in $(find . -name go.mod -maxdepth 3 -exec dirname {} \; ); do
-          echo "::group:: $dir"
-          pushd $dir
-
-          [[ ! -f hack/update-codegen.sh ]] || ./hack/update-codegen.sh
-
-          popd
-          echo ::endgroup::
-        done
+        ./hack/update-codegen.sh
 
     - name: Verify
       uses: chainguard-dev/actions/nodiff@main
