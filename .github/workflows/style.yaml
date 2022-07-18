@@ -1,0 +1,114 @@
+# Copyright 2022 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Code Style
+
+on:
+  pull_request:
+    branches: [ 'main', 'release-*' ]
+  push:
+    branches: [ 'main', 'release-*' ]
+
+jobs:
+
+  gofmt:
+    name: check gofmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.17
+          check-latest: true
+
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - uses: chainguard-dev/actions/gofmt@main
+        with:
+          args: -s
+
+  goimports:
+    name: check goimports
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.17
+          check-latest: true
+
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - uses: chainguard-dev/actions/goimports@main
+
+  golangci-lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+
+    steps:
+      # https://github.com/mvdan/github-actions-golang#how-do-i-set-up-caching-between-builds
+      - uses: actions/cache@v3
+        with:
+          # In order:
+          # * Module download cache
+          # * Build cache (Linux)
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Set up Go 1.17.x
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.17
+          check-latest: true
+      - uses: actions/checkout@v3
+      - run: ./hack/verify-golangci-lint.sh
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.17
+          check-latest: true
+
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - uses: chainguard-dev/actions/trailing-space@main
+        if: ${{ always() }}
+
+      - uses: chainguard-dev/actions/eof-newline@main
+        if: ${{ always() }}
+
+      - uses: reviewdog/action-tflint@master
+        if: ${{ always() }}
+        with:
+          github_token: ${{ secrets.github_token }}
+          fail_on_error: true
+
+      - uses: reviewdog/action-misspell@v1
+        if: ${{ always() }}
+        with:
+          github_token: ${{ secrets.github_token }}
+          fail_on_error: true
+          locale: "US"
+          exclude: |
+            **/go.sum
+            **/third_party/**
+
+      - uses: get-woke/woke-action-reviewdog@v0
+        if: ${{ always() }}
+        with:
+          github-token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: error
+          fail-on-error: true

@@ -11,13 +11,13 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"net/url"
 	"sync"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"knative.dev/pkg/apis"
 )
 
 // ListenerForTest is to support bufnet in our testing.
@@ -61,15 +61,15 @@ var (
 	SendMsgSize = 100 * 1024 * 1024 // 100MB
 )
 
-func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
+func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 	switch delegate.Scheme {
 	case "http":
 		port := "80"
 		// Explicit port from the user signifies we should override the scheme-based defaults.
-		if delegate.URL().Port() != "" {
-			port = delegate.URL().Port()
+		if delegate.Port() != "" {
+			port = delegate.Port()
 		}
-		return net.JoinHostPort(delegate.URL().Hostname(), port), []grpc.DialOption{
+		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
 			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -81,10 +81,10 @@ func GRPCOptions(delegate apis.URL) (string, []grpc.DialOption) {
 	case "https":
 		port := "443"
 		// Explicit port from the user signifies we should override the scheme-based defaults.
-		if delegate.URL().Port() != "" {
-			port = delegate.URL().Port()
+		if delegate.Port() != "" {
+			port = delegate.Port()
 		}
-		return net.JoinHostPort(delegate.URL().Hostname(), port), []grpc.DialOption{
+		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
 			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
