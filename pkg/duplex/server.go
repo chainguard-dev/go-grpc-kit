@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -100,12 +101,29 @@ func (d *Duplex) ListenAndServe(ctx context.Context) error {
 // RegisterListenAndServe initializes Prometheus metrics and starts a HTTP
 // /metrics endpoint for exporting Prometheus metrics in the background.
 // Call this *after* all services have been registered.
-func (d *Duplex) RegisterListenAndServeMetrics(port int) {
+func (d *Duplex) RegisterListenAndServeMetrics(port int, enablePprof bool) {
 	grpc_prometheus.Register(d.Server)
 
 	go func(mport int) {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
+
+		if enablePprof {
+			// pprof handles
+			mux.HandleFunc("/debug/pprof/", pprof.Index)
+			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+			mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
+			mux.Handle("/debug/pprof/block", pprof.Handler("block"))
+			mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+			mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+			mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
+			mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+
+			log.Println("registering handle for /debug/pprof")
+		}
 
 		if err := http.ListenAndServe(fmt.Sprintf(":%d", mport), mux); err != nil {
 			log.Fatalf("listen and server for http /metrics = %v", err)
