@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // grpcHandlerFunc routes inbound requests to either the passed gRPC server or
@@ -71,7 +72,7 @@ func New(port int, opts ...interface{}) *Duplex {
 		// the appropriate method on this address, so we loopback to ourselves.
 		Loopback:    fmt.Sprintf("localhost:%d", port),
 		Port:        port,
-		DialOptions: []grpc.DialOption{grpc.WithInsecure()},
+		DialOptions: []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())},
 	}
 	return d
 }
