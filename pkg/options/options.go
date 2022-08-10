@@ -36,7 +36,10 @@ var listenersForTest sync.Map
 // Register a test listener and get a provided scheme.
 func RegisterListenerForTest(listener DialableListener) string {
 	for {
-		val, _ := rand.Int(rand.Reader, big.NewInt(int64(math.MaxInt64)))
+		val, err := rand.Int(rand.Reader, big.NewInt(int64(math.MaxInt64)))
+    if err != nil {
+      panic(err)
+    }
 		scheme := fmt.Sprintf("test%d", val.Int64())
 		if _, conflicted := listenersForTest.LoadOrStore(scheme, listener); !conflicted {
 			return scheme
