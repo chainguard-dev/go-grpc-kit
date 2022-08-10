@@ -37,9 +37,9 @@ var listenersForTest sync.Map
 func RegisterListenerForTest(listener DialableListener) string {
 	for {
 		val, err := rand.Int(rand.Reader, big.NewInt(int64(math.MaxInt64)))
-    if err != nil {
-      panic(err)
-    }
+		if err != nil {
+			panic(err)
+		}
 		scheme := fmt.Sprintf("test%d", val.Int64())
 		if _, conflicted := listenersForTest.LoadOrStore(scheme, listener); !conflicted {
 			return scheme
