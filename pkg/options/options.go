@@ -7,9 +7,9 @@ package options
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"fmt"
-	"math/rand"
 	"net"
 	"net/url"
 	"sync"
