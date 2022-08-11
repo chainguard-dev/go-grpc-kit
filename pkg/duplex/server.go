@@ -103,6 +103,7 @@ func (d *Duplex) ListenAndServe(ctx context.Context) error {
 // Call this *after* all services have been registered.
 func (d *Duplex) RegisterListenAndServeMetrics(port int, enablePprof bool) {
 	grpc_prometheus.Register(d.Server)
+	grpc_prometheus.EnableHandlingTimeHistogram()
 
 	go func(mport int) {
 		mux := http.NewServeMux()
