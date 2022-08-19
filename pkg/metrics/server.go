@@ -54,7 +54,7 @@ func SetupTracer(ctx context.Context, otelcURL string) (*trace.TracerProvider, e
 	return tp, nil
 }
 
-func RegisterListenAndServer(server *grpc.Server, listenAddr string, enablePprof bool) {
+func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
 	grpc_prometheus.Register(server)
 	grpc_prometheus.EnableHandlingTimeHistogram()
 
