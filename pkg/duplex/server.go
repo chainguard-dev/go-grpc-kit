@@ -102,5 +102,5 @@ func (d *Duplex) ListenAndServe(ctx context.Context) error {
 // /metrics endpoint for exporting Prometheus metrics in the background.
 // Call this *after* all services have been registered.
 func (d *Duplex) RegisterListenAndServeMetrics(port int, enablePprof bool) {
-	metrics.RegisterListenAndServe(fmt.Sprintf(":%d", port), enablePprof)
+	metrics.RegisterListenAndServe(d.Server, d.fmt.Sprintf(":%d", port), enablePprof)
 }
