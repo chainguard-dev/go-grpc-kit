@@ -8,18 +8,16 @@ package duplex
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
-	"net/http/pprof"
 	"strings"
 
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"chainguard.dev/go-grpc-kit/pkg/metrics"
 )
 
 // grpcHandlerFunc routes inbound requests to either the passed gRPC server or
@@ -104,32 +102,5 @@ func (d *Duplex) ListenAndServe(ctx context.Context) error {
 // /metrics endpoint for exporting Prometheus metrics in the background.
 // Call this *after* all services have been registered.
 func (d *Duplex) RegisterListenAndServeMetrics(port int, enablePprof bool) {
-	grpc_prometheus.Register(d.Server)
-	grpc_prometheus.EnableHandlingTimeHistogram()
-
-	go func(mport int) {
-		mux := http.NewServeMux()
-		mux.Handle("/metrics", promhttp.Handler())
-
-		if enablePprof {
-			// pprof handles
-			mux.HandleFunc("/debug/pprof/", pprof.Index)
-			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-			mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
-			mux.Handle("/debug/pprof/block", pprof.Handler("block"))
-			mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-			mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-			mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
-			mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
-
-			log.Println("registering handle for /debug/pprof")
-		}
-
-		if err := http.ListenAndServe(fmt.Sprintf(":%d", mport), mux); err != nil {
-			log.Fatalf("listen and server for http /metrics = %v", err)
-		}
-	}(port)
+	metrics.RegisterListenAndServe(d.Server, fmt.Sprintf(":%d", port), enablePprof)
 }
