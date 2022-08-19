@@ -15,14 +15,14 @@ jobs:
     name: check gofmt
     runs-on: ubuntu-latest
     steps:
+      - name: Check out code
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # v3
+
       - name: Set up Go
         uses: actions/setup-go@84cbf8094393cdc5fe1fe1671ff2647332956b1a # v3
         with:
           go-version-file: './go.mod'
           check-latest: true
-
-      - name: Check out code
-        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # v3
 
       - uses: chainguard-dev/actions/gofmt@main
         with:
@@ -32,14 +32,14 @@ jobs:
     name: check goimports
     runs-on: ubuntu-latest
     steps:
+      - name: Check out code
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # v3
+
       - name: Set up Go
         uses: actions/setup-go@84cbf8094393cdc5fe1fe1671ff2647332956b1a # v3
         with:
           go-version-file: './go.mod'
           check-latest: true
-
-      - name: Check out code
-        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # v3
 
       - uses: chainguard-dev/actions/goimports@main
 
@@ -48,6 +48,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # v3
+
+      - name: Set up Go
+        uses: actions/setup-go@84cbf8094393cdc5fe1fe1671ff2647332956b1a # v3
+        with:
+          go-version-file: './go.mod'
+          check-latest: true
+
       # https://github.com/mvdan/github-actions-golang#how-do-i-set-up-caching-between-builds
       - uses: actions/cache@a7c34adf76222e77931dedbf4a45b2e4648ced19 # v3
         with:
@@ -61,12 +69,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Set up Go 1.18.x
-        uses: actions/setup-go@84cbf8094393cdc5fe1fe1671ff2647332956b1a # v3
-        with:
-          go-version-file: './go.mod'
-          check-latest: true
-      - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # v3
       - run: ./hack/verify-golangci-lint.sh
 
   lint:
@@ -74,14 +76,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out code
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # v3
+
       - name: Set up Go
         uses: actions/setup-go@84cbf8094393cdc5fe1fe1671ff2647332956b1a # v3
         with:
           go-version-file: './go.mod'
           check-latest: true
-
-      - name: Check out code
-        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b # v3
 
       - uses: chainguard-dev/actions/trailing-space@main
         if: ${{ always() }}
