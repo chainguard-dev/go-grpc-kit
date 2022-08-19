@@ -24,15 +24,8 @@ import (
 // Fractions >= 1 will always sample. Fractions < 0 are treated as zero. To
 // respect the parent trace's `SampledFlag`, the `TraceIDRatioBased` sampler
 // should be used as a delegate of a `Parent` sampler.
-func SetupTracer(ctx context.Context, otelcURL string) (*trace.TracerProvider, error) {
-	if otelcURL == "" {
-		return nil, nil
-	}
-	traceExporter, err := otlptracegrpc.New(
-		ctx,
-		otlptracegrpc.WithEndpoint(otelcURL),
-		otlptracegrpc.WithInsecure(),
-	)
+func SetupTracer(ctx context.Context) (*trace.TracerProvider, error) {
+	traceExporter, err := otlptracegrpc.New(ctx)
 	if err != nil {
 		return nil, nil
 	}
