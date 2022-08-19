@@ -82,10 +82,12 @@ func New(port int, opts ...interface{}) *Duplex {
 // `RegisterHandlerFromEndpointFn` with the correct options after `d.Server`
 // has been registered with the implementation. Use like:
 // ```go
+//
 //	pb.Register<Type>Server(d.Server, impl.New<TypeImpl>())
 //	if err := d.RegisterHandler(ctx, pb.Register<Type>HandlerFromEndpoint); err != nil {
 //		log.Panicf("Failed to register gateway endpoint: %v", err)
 //	}
+//
 // ```
 func (d *Duplex) RegisterHandler(ctx context.Context, fn RegisterHandlerFromEndpointFn) error {
 	return fn(ctx, d.MUX, d.Loopback, d.DialOptions)
