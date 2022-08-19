@@ -1,6 +1,6 @@
 module chainguard.dev/go-grpc-kit
 
-go 1.17
+go 1.18
 
 require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
