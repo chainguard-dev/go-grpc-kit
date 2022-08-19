@@ -10,7 +10,7 @@ set -o pipefail
 REPO_ROOT_DIR=$PWD/$(dirname "$0")/..
 
 echo === Tidying up for Golang
-go mod tidy -compat=1.17
+go mod tidy -compat=1.18
 
 echo === Generating for Golang
 go generate ./...
