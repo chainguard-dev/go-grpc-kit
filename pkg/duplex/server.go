@@ -8,20 +8,16 @@ package duplex
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
-	"net/http/pprof"
 	"strings"
 
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-  "chainguard.dev/go-grpc-kit/pkg/metrics"
+	"chainguard.dev/go-grpc-kit/pkg/metrics"
 )
 
 // grpcHandlerFunc routes inbound requests to either the passed gRPC server or
@@ -106,5 +102,5 @@ func (d *Duplex) ListenAndServe(ctx context.Context) error {
 // /metrics endpoint for exporting Prometheus metrics in the background.
 // Call this *after* all services have been registered.
 func (d *Duplex) RegisterListenAndServeMetrics(port int, enablePprof bool) {
-  metrics.RegisterListenAndServeMetrics(fmt.Sprintf(":%d", port), enablePprof)
+	metrics.RegisterListenAndServeMetrics(fmt.Sprintf(":%d", port), enablePprof)
 }
