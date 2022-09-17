@@ -13,7 +13,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.10.0
 	golang.org/x/net v0.0.0-20220624214902-1bab6f366d9e
 	google.golang.org/grpc v1.49.0
-	knative.dev/pkg v0.0.0-20220914154704-5f66ecf267fe
+	knative.dev/pkg v0.0.0-20220826162920-93b66e6a8700
 )
 
 require (
@@ -25,6 +25,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
@@ -46,8 +47,8 @@ require (
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/api v0.24.4 // indirect
-	k8s.io/apimachinery v0.24.4 // indirect
+	k8s.io/api v0.23.9 // indirect
+	k8s.io/apimachinery v0.23.9 // indirect
 	k8s.io/klog/v2 v2.70.2-0.20220707122935-0990e81f1a8f // indirect
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9 // indirect
 	sigs.k8s.io/json v0.0.0-20211208200746-9f7c6b3444d2 // indirect
