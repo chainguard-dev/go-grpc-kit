@@ -10,8 +10,11 @@ import (
 	"log"
 	"net/http"
 	"net/http/pprof"
+	"runtime"
+	"runtime/debug"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -50,6 +53,40 @@ func SetupTracer(ctx context.Context) (*trace.TracerProvider, error) {
 func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
 	grpc_prometheus.Register(server)
 	grpc_prometheus.EnableHandlingTimeHistogram()
+
+	var commit string
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		log.Println("unable to read build info")
+		commit = "unknown"
+	}
+	found := false
+	for _, s := range bi.Settings {
+		if s.Key == "vcs.revision" {
+			found = true
+			commit = s.Value
+		}
+	}
+	if !found {
+		log.Println("build info did not include vcs.revision")
+		commit = "unknown"
+	}
+
+	// This is heavily based on
+	// https://github.com/prometheus/common/blob/v0.37.0/version/info.go
+	prometheus.MustRegister(prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace: "chainguard",
+			Name:      "build_info",
+			Help:      "A metric with a constant '1' value labeled by commit, go version and platform the program was built from",
+			ConstLabels: prometheus.Labels{
+				"commit":    commit,
+				"goversion": runtime.Version(),
+				"platform":  runtime.GOOS + "/" + runtime.GOARCH,
+			},
+		},
+		func() float64 { return 1 },
+	))
 
 	go func(addr string) {
 		mux := http.NewServeMux()
