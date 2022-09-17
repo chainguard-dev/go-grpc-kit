@@ -68,6 +68,12 @@ var (
 	SendMsgSize = 100 * 1024 * 1024 // 100MB
 )
 
+func enableClientTimeHistogram() {
+	grpc_prometheus.EnableClientHandlingTimeHistogram()
+	grpc_prometheus.EnableClientStreamReceiveTimeHistogram()
+	grpc_prometheus.EnableClientStreamSendTimeHistogram()
+}
+
 func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 	switch delegate.Scheme {
 	case "http":
@@ -76,6 +82,7 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		if delegate.Port() != "" {
 			port = delegate.Port()
 		}
+		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
 			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, otelgrpc.UnaryClientInterceptor()),
 			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, otelgrpc.StreamClientInterceptor()),
@@ -92,6 +99,7 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		if delegate.Port() != "" {
 			port = delegate.Port()
 		}
+		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
 			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, otelgrpc.UnaryClientInterceptor()),
 			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, otelgrpc.StreamClientInterceptor()),
