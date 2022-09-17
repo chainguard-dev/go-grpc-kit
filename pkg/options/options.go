@@ -17,11 +17,26 @@ import (
 	"sync"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/kelseyhightower/envconfig"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"knative.dev/pkg/logging"
 )
+
+var env struct {
+	EnableClientHandlingTimeHistogram      bool `envconfig:"ENABLE_CLIENT_HANDLING_TIME_HISTOGRAM" default:"true" required: "false"`
+	EnableClientStreamReceiveTimeHistogram bool `envconfig:"ENABLE_CLIENT_STREAM_RECEIVE_TIME_HISTOGRAM" default:"true" required: "false"`
+	EnableClientStreamSendTimeHistogram    bool `envconfig:"ENABLE_CLIENT_STREAM_SEND_TIME_HISTOGRAM" default:"true" required: "false"`
+}
+
+func init() {
+	logger := logging.FromContext(context.Background())
+	if err := envconfig.Process("", &env); err != nil {
+		logger.Warn("Failed to process environment variables", "error", err)
+	}
+}
 
 // ListenerForTest is to support bufnet in our testing.
 var ListenerForTest DialableListener
@@ -69,9 +84,15 @@ var (
 )
 
 func enableClientTimeHistogram() {
-	grpc_prometheus.EnableClientHandlingTimeHistogram()
-	grpc_prometheus.EnableClientStreamReceiveTimeHistogram()
-	grpc_prometheus.EnableClientStreamSendTimeHistogram()
+	if env.EnableClientHandlingTimeHistogram {
+		grpc_prometheus.EnableClientHandlingTimeHistogram()
+	}
+	if env.EnableClientStreamReceiveTimeHistogram {
+		grpc_prometheus.EnableClientStreamReceiveTimeHistogram()
+	}
+	if env.EnableClientStreamSendTimeHistogram {
+		grpc_prometheus.EnableClientStreamSendTimeHistogram()
+	}
 }
 
 func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
