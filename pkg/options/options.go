@@ -84,14 +84,18 @@ var (
 )
 
 func enableClientTimeHistogram() {
+	hopt := grpc_prometheus.WithHistogramBuckets(
+		[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600},
+	)
+
 	if env.EnableClientHandlingTimeHistogram {
-		grpc_prometheus.EnableClientHandlingTimeHistogram()
+		grpc_prometheus.EnableClientHandlingTimeHistogram(hopt)
 	}
 	if env.EnableClientStreamReceiveTimeHistogram {
-		grpc_prometheus.EnableClientStreamReceiveTimeHistogram()
+		grpc_prometheus.EnableClientStreamReceiveTimeHistogram(hopt)
 	}
 	if env.EnableClientStreamSendTimeHistogram {
-		grpc_prometheus.EnableClientStreamSendTimeHistogram()
+		grpc_prometheus.EnableClientStreamSendTimeHistogram(hopt)
 	}
 }
 
