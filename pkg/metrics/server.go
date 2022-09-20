@@ -49,7 +49,11 @@ func SetupTracer(ctx context.Context) (*trace.TracerProvider, error) {
 
 func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
 	grpc_prometheus.Register(server)
-	grpc_prometheus.EnableHandlingTimeHistogram()
+	grpc_prometheus.EnableHandlingTimeHistogram(
+		grpc_prometheus.WithHistogramBuckets(
+			[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600},
+		),
+	)
 
 	go func(addr string) {
 		mux := http.NewServeMux()
