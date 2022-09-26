@@ -25,6 +25,10 @@ import (
 // Fractions >= 1 will always sample. Fractions < 0 are treated as zero. To
 // respect the parent trace's `SampledFlag`, the `TraceIDRatioBased` sampler
 // should be used as a delegate of a `Parent` sampler.
+//
+// Expected usage:
+//
+//	defer metrics.SetupTracer(ctx)()
 func SetupTracer(ctx context.Context) func() {
 	logger := logging.FromContext(ctx)
 
