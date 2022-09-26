@@ -19,15 +19,18 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
+	"knative.dev/pkg/logging"
 )
 
 // Fractions >= 1 will always sample. Fractions < 0 are treated as zero. To
 // respect the parent trace's `SampledFlag`, the `TraceIDRatioBased` sampler
 // should be used as a delegate of a `Parent` sampler.
-func SetupTracer(ctx context.Context) (*trace.TracerProvider, error) {
+func SetupTracer(ctx context.Context) func() {
+	logger := logging.FromContext(ctx)
+
 	traceExporter, err := otlptracegrpc.New(ctx)
 	if err != nil {
-		return nil, nil
+		logger.Panicf("SetupTracer() = %v", err)
 	}
 	bsp := trace.NewBatchSpanProcessor(traceExporter)
 	res := resource.Default()
@@ -44,7 +47,11 @@ func SetupTracer(ctx context.Context) (*trace.TracerProvider, error) {
 	)
 	otel.SetTextMapPropagator(prp)
 
-	return tp, nil
+	return func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			logger.Infof("Error shutting down tracer provider: %v", err)
+		}
+	}
 }
 
 func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
