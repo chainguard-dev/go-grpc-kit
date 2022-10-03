@@ -24,6 +24,6 @@ jobs:
           echo "::set-output name=files::${yamls}"
 
       - name: Action lint
-        uses: reviewdog/action-actionlint@8c8d2690df01d64638691b59cb1c37d913e6264f # v1
+        uses: reviewdog/action-actionlint@fe5c2db6029881e0b5634d7cb0d119b0c16b6922 # v1
         with:
           actionlint_flags: ${{ steps.get_yamls.outputs.files }}
