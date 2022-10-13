@@ -21,7 +21,7 @@ jobs:
         id: get_yamls
         run: |
           yamls=$(find .github/workflows -name "*.y*ml" | grep -v dependabot.)
-          echo "::set-output name=files::${yamls}"
+          echo "files="${yamls}"" >> $GITHUB_OUTPUT
 
       - name: Action lint
         uses: reviewdog/action-actionlint@c5d7b203340dfcb0f18fdf2ea44b0c10a1dee012 # v1
