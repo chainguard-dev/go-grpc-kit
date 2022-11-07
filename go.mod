@@ -1,6 +1,6 @@
 module chainguard.dev/go-grpc-kit
 
-go 1.18
+go 1.19
 
 require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20210315223345-82c243799c99
@@ -12,7 +12,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.10.0
 	go.opentelemetry.io/otel/sdk v1.10.0
 	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
-	google.golang.org/grpc v1.50.0
+	google.golang.org/grpc v1.50.1
 	knative.dev/pkg v0.0.0-20221010143036-21d3b47e2efe
 )
 
