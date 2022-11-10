@@ -8,6 +8,7 @@ package duplex
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -15,7 +16,6 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"chainguard.dev/go-grpc-kit/pkg/metrics"
 )
@@ -50,14 +50,19 @@ type RegisterHandlerFromEndpointFn func(ctx context.Context, mux *runtime.ServeM
 // typed `runtime.ServeMuxOption`. Unknown opts will cause a panic.
 func New(port int, opts ...interface{}) *Duplex {
 	// Split out the options into their types.
-	var gOpts []grpc.ServerOption
-	var mOpts []runtime.ServeMuxOption
+	var (
+		gOpts []grpc.ServerOption
+		dOpts []grpc.DialOption
+		mOpts []runtime.ServeMuxOption
+	)
 	for _, o := range opts {
 		switch opt := o.(type) {
 		case grpc.ServerOption:
 			gOpts = append(gOpts, opt)
 		case runtime.ServeMuxOption:
 			mOpts = append(mOpts, opt)
+		case grpc.DialOption:
+			dOpts = append(dOpts, opt)
 		default:
 			panic(fmt.Errorf("unknown type: %T", o))
 		}
@@ -71,7 +76,7 @@ func New(port int, opts ...interface{}) *Duplex {
 		// the appropriate method on this address, so we loopback to ourselves.
 		Loopback:    fmt.Sprintf("localhost:%d", port),
 		Port:        port,
-		DialOptions: []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())},
+		DialOptions: dOpts,
 	}
 	return d
 }
@@ -96,6 +101,12 @@ func (d *Duplex) RegisterHandler(ctx context.Context, fn RegisterHandlerFromEndp
 func (d *Duplex) ListenAndServe(ctx context.Context) error {
 	addr := fmt.Sprintf(":%d", d.Port)
 	return http.ListenAndServe(addr, grpcHandlerFunc(d.Server, d.MUX))
+}
+
+// ListenAndServe starts both the gRPC server and HTTP Gateway MUX on the given listener.
+// Note: This call is blocking.
+func (d *Duplex) Serve(ctx context.Context, listener net.Listener) error {
+	return http.Serve(listener, grpcHandlerFunc(d.Server, d.MUX))
 }
 
 // RegisterListenAndServe initializes Prometheus metrics and starts a HTTP
