@@ -45,6 +45,6 @@ while read -r i; do
   pushd "$i"
   golangci-lint run ./... || error=1
   popd
-done <<< "$(find . -name go.mod -maxdepth 3 -exec dirname {} \;)"
+done <<< "$(find . -name go.mod -exec dirname {} \;)"
 
 exit $error
