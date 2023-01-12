@@ -15,7 +15,9 @@ import (
 	"net"
 	"net/url"
 	"sync"
+	"time"
 
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/kelseyhightower/envconfig"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -29,6 +31,7 @@ var env struct {
 	EnableClientHandlingTimeHistogram      bool `envconfig:"ENABLE_CLIENT_HANDLING_TIME_HISTOGRAM" default:"true"`
 	EnableClientStreamReceiveTimeHistogram bool `envconfig:"ENABLE_CLIENT_STREAM_RECEIVE_TIME_HISTOGRAM" default:"true"`
 	EnableClientStreamSendTimeHistogram    bool `envconfig:"ENABLE_CLIENT_STREAM_SEND_TIME_HISTOGRAM" default:"true"`
+	GrpcClientMaxRetry                     uint `envconfig:"GRPC_CLIENT_MAX_RETRY" default:"0"`
 }
 
 func init() {
@@ -100,6 +103,11 @@ func enableClientTimeHistogram() {
 }
 
 func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
+	retryOpts := []grpc_retry.CallOption{
+		grpc_retry.WithBackoff(grpc_retry.BackoffExponential(100 * time.Millisecond)),
+		grpc_retry.WithMax(env.GrpcClientMaxRetry),
+	}
+
 	switch delegate.Scheme {
 	case "http":
 		port := "80"
@@ -109,8 +117,8 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		}
 		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
-			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, otelgrpc.UnaryClientInterceptor()),
-			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, otelgrpc.StreamClientInterceptor()),
+			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, otelgrpc.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
+			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, otelgrpc.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithDefaultCallOptions(
@@ -126,8 +134,8 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		}
 		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
-			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, otelgrpc.UnaryClientInterceptor()),
-			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, otelgrpc.StreamClientInterceptor()),
+			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, otelgrpc.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
+			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, otelgrpc.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
