@@ -3,6 +3,7 @@ module chainguard.dev/go-grpc-kit
 go 1.19
 
 require (
+	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20210315223345-82c243799c99
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.0
 	github.com/kelseyhightower/envconfig v1.4.0
@@ -14,9 +15,9 @@ require (
 	golang.org/x/net v0.5.0
 	golang.org/x/oauth2 v0.4.0
 	google.golang.org/genproto v0.0.0-20221207170731-23e4bf6bdc37
-	google.golang.org/grpc v1.51.0
+	google.golang.org/grpc v1.52.0
 	google.golang.org/protobuf v1.28.1
-	knative.dev/pkg v0.0.0-20230104193420-027482598489
+	knative.dev/pkg v0.0.0-20230110144649-ecf386394194
 )
 
 require (
