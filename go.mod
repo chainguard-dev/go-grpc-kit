@@ -15,14 +15,14 @@ require (
 	golang.org/x/net v0.7.0
 	golang.org/x/oauth2 v0.5.0
 	google.golang.org/genproto v0.0.0-20230127162408-596548ed4efa
-	google.golang.org/grpc v1.52.3
+	google.golang.org/grpc v1.53.0
 	google.golang.org/protobuf v1.28.1
 	knative.dev/pkg v0.0.0-20230125083639-408ad0773f47
 )
 
 require (
-	cloud.google.com/go/compute v1.13.0 // indirect
-	cloud.google.com/go/compute/metadata v0.2.1 // indirect
+	cloud.google.com/go/compute v1.15.1 // indirect
+	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.0 // indirect
