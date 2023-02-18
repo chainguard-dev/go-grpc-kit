@@ -27,18 +27,28 @@ import (
 	"knative.dev/pkg/logging"
 )
 
-var env struct {
+type envStruct struct {
 	EnableClientHandlingTimeHistogram      bool `envconfig:"ENABLE_CLIENT_HANDLING_TIME_HISTOGRAM" default:"true"`
 	EnableClientStreamReceiveTimeHistogram bool `envconfig:"ENABLE_CLIENT_STREAM_RECEIVE_TIME_HISTOGRAM" default:"true"`
 	EnableClientStreamSendTimeHistogram    bool `envconfig:"ENABLE_CLIENT_STREAM_SEND_TIME_HISTOGRAM" default:"true"`
 	GrpcClientMaxRetry                     uint `envconfig:"GRPC_CLIENT_MAX_RETRY" default:"0"`
 }
 
-func init() {
-	logger := logging.FromContext(context.Background())
-	if err := envconfig.Process("", &env); err != nil {
-		logger.Warn("Failed to process environment variables", "error", err)
-	}
+var (
+	envOnce sync.Once
+
+	env envStruct
+)
+
+// Parse these lazily, to allow clients to set their own in their main() or init().
+func getEnv() *envStruct {
+	envOnce.Do(func() {
+		logger := logging.FromContext(context.Background())
+		if err := envconfig.Process("", &env); err != nil {
+			logger.Warn("Failed to process environment variables", "error", err)
+		}
+	})
+	return &env
 }
 
 // ListenerForTest is to support bufnet in our testing.
@@ -91,13 +101,13 @@ func enableClientTimeHistogram() {
 		[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600},
 	)
 
-	if env.EnableClientHandlingTimeHistogram {
+	if getEnv().EnableClientHandlingTimeHistogram {
 		grpc_prometheus.EnableClientHandlingTimeHistogram(hopt)
 	}
-	if env.EnableClientStreamReceiveTimeHistogram {
+	if getEnv().EnableClientStreamReceiveTimeHistogram {
 		grpc_prometheus.EnableClientStreamReceiveTimeHistogram(hopt)
 	}
-	if env.EnableClientStreamSendTimeHistogram {
+	if getEnv().EnableClientStreamSendTimeHistogram {
 		grpc_prometheus.EnableClientStreamSendTimeHistogram(hopt)
 	}
 }
@@ -105,7 +115,7 @@ func enableClientTimeHistogram() {
 func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 	retryOpts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffExponential(100 * time.Millisecond)),
-		grpc_retry.WithMax(env.GrpcClientMaxRetry),
+		grpc_retry.WithMax(getEnv().GrpcClientMaxRetry),
 	}
 
 	switch delegate.Scheme {
