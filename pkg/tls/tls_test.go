@@ -21,7 +21,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"testing"a
+	"testing"
 	"time"
 
 	"chainguard.dev/go-grpc-kit/pkg/duplex"
