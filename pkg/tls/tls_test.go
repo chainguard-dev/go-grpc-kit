@@ -79,7 +79,7 @@ func TestTLS(t *testing.T) {
 	conn, err := grpc.Dial(lis.Addr().String(),
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 		// Send password to verify gRPC doesn't reject it.
-		grpc.WithPerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{AccessToken: "hunter2"})),
+		grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "hunter2"})}),
 	)
 	if err != nil {
 		log.Fatalf("failed to dial: %v", err)
