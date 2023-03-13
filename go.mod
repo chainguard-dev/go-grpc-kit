@@ -12,7 +12,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.40.0
 	go.opentelemetry.io/otel v1.14.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.13.0
-	go.opentelemetry.io/otel/sdk v1.13.0
+	go.opentelemetry.io/otel/sdk v1.14.0
 	golang.org/x/net v0.7.0
 	golang.org/x/oauth2 v0.5.0
 	google.golang.org/genproto v0.0.0-20230127162408-596548ed4efa
