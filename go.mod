@@ -6,7 +6,7 @@ require (
 	github.com/google/go-cmp v0.5.9
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20210315223345-82c243799c99
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.0
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.2
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/prometheus/client_golang v1.14.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.40.0
@@ -15,14 +15,14 @@ require (
 	go.opentelemetry.io/otel/sdk v1.14.0
 	golang.org/x/net v0.7.0
 	golang.org/x/oauth2 v0.5.0
-	google.golang.org/genproto v0.0.0-20230127162408-596548ed4efa
+	google.golang.org/genproto v0.0.0-20230223222841-637eb2293923
 	google.golang.org/grpc v1.53.0
 	google.golang.org/protobuf v1.29.0
 	knative.dev/pkg v0.0.0-20230125083639-408ad0773f47
 )
 
 require (
-	cloud.google.com/go/compute v1.15.1 // indirect
+	cloud.google.com/go/compute v1.18.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
