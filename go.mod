@@ -17,7 +17,7 @@ require (
 	golang.org/x/oauth2 v0.5.0
 	google.golang.org/genproto v0.0.0-20230127162408-596548ed4efa
 	google.golang.org/grpc v1.53.0
-	google.golang.org/protobuf v1.28.1
+	google.golang.org/protobuf v1.29.0
 	knative.dev/pkg v0.0.0-20230125083639-408ad0773f47
 )
 
