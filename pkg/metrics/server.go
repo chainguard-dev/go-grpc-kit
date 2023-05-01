@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/pprof"
+	"time"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -87,7 +88,13 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 			log.Println("registering handle for /debug/pprof")
 		}
 
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		server := &http.Server{
+			Addr:              addr,
+			Handler:           mux,
+			ReadHeaderTimeout: 600 * time.Second,
+		}
+
+		if err := server.ListenAndServe(); err != nil {
 			log.Fatalf("listen and server for http /metrics = %v", err)
 		}
 	}(listenAddr)

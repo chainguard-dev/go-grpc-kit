@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"golang.org/x/net/http2"
@@ -98,14 +99,20 @@ func (d *Duplex) RegisterHandler(ctx context.Context, fn RegisterHandlerFromEndp
 
 // ListenAndServe starts both the gRPC server and HTTP Gateway MUX.
 // Note: This call is blocking.
-func (d *Duplex) ListenAndServe(ctx context.Context) error {
-	addr := fmt.Sprintf(":%d", d.Port)
-	return http.ListenAndServe(addr, grpcHandlerFunc(d.Server, d.MUX))
+func (d *Duplex) ListenAndServe(_ context.Context) error {
+	server := &http.Server{
+		Addr:              fmt.Sprintf(":%d", d.Port),
+		Handler:           grpcHandlerFunc(d.Server, d.MUX),
+		ReadHeaderTimeout: 600 * time.Second,
+	}
+
+	return server.ListenAndServe()
 }
 
 // ListenAndServe starts both the gRPC server and HTTP Gateway MUX on the given listener.
 // Note: This call is blocking.
-func (d *Duplex) Serve(ctx context.Context, listener net.Listener) error {
+// #nosec G114 -- used only for testing tls.
+func (d *Duplex) Serve(_ context.Context, listener net.Listener) error {
 	return http.Serve(listener, grpcHandlerFunc(d.Server, d.MUX))
 }
 
