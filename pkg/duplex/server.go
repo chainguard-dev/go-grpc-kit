@@ -40,6 +40,7 @@ type Duplex struct {
 	Server      *grpc.Server
 	MUX         *runtime.ServeMux
 	Loopback    string
+	Host        string
 	Port        int
 	DialOptions []grpc.DialOption
 }
@@ -101,7 +102,7 @@ func (d *Duplex) RegisterHandler(ctx context.Context, fn RegisterHandlerFromEndp
 // Note: This call is blocking.
 func (d *Duplex) ListenAndServe(_ context.Context) error {
 	server := &http.Server{
-		Addr:              fmt.Sprintf(":%d", d.Port),
+		Addr:              fmt.Sprintf("%s:%d", d.Host, d.Port),
 		Handler:           grpcHandlerFunc(d.Server, d.MUX),
 		ReadHeaderTimeout: 600 * time.Second,
 	}
@@ -120,5 +121,5 @@ func (d *Duplex) Serve(_ context.Context, listener net.Listener) error {
 // /metrics endpoint for exporting Prometheus metrics in the background.
 // Call this *after* all services have been registered.
 func (d *Duplex) RegisterListenAndServeMetrics(port int, enablePprof bool) {
-	metrics.RegisterListenAndServe(d.Server, fmt.Sprintf(":%d", port), enablePprof)
+	metrics.RegisterListenAndServe(d.Server, fmt.Sprintf("%s:%d", d.Host, port), enablePprof)
 }
