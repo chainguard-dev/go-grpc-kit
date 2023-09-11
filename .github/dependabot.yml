@@ -8,6 +8,23 @@ updates:
   schedule:
     interval: "weekly"
   open-pull-requests-limit: 10
+  groups:
+    golang-org-x:
+      patterns:
+        - "golang.org/x/*"
+    k8s-io:
+      patterns:
+        - "k8s.io/*"
+        - "sigs.k8s.io/*"
+    otel:
+      patterns:
+        - "go.opentelemetry.io/*"
+    prom:
+      patterns:
+        - "github.com/prometheus/*"
+    grpc:
+      patterns:
+        - "github.com/grpc-ecosystem/*"
 - package-ecosystem: "github-actions"
   directory: "/"
   schedule:
