@@ -13,8 +13,8 @@ require (
 	go.opentelemetry.io/otel v1.18.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.18.0
 	go.opentelemetry.io/otel/sdk v1.18.0
-	golang.org/x/net v0.15.0
-	golang.org/x/oauth2 v0.12.0
+	golang.org/x/net v0.16.0
+	golang.org/x/oauth2 v0.13.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20230822172742-b8732ec3820d
 	google.golang.org/grpc v1.58.2
 	google.golang.org/protobuf v1.31.0
@@ -47,7 +47,7 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
-	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
