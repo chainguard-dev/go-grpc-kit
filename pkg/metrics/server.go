@@ -12,6 +12,7 @@ import (
 	"net/http/pprof"
 	"time"
 
+	"github.com/chainguard-dev/slogctx"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
@@ -20,7 +21,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
-	"knative.dev/pkg/logging"
 )
 
 // Fractions >= 1 will always sample. Fractions < 0 are treated as zero. To
@@ -31,11 +31,12 @@ import (
 //
 //	defer metrics.SetupTracer(ctx)()
 func SetupTracer(ctx context.Context) func() {
-	logger := logging.FromContext(ctx)
+	logger := slogctx.FromContext(ctx)
 
 	traceExporter, err := otlptracegrpc.New(ctx)
 	if err != nil {
-		logger.Panicf("SetupTracer() = %v", err)
+		logger.Errorf("SetupTracer() = %v", err)
+		panic(err)
 	}
 	bsp := trace.NewBatchSpanProcessor(traceExporter)
 	res := resource.Default()

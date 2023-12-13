@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chainguard-dev/slogctx"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/kelseyhightower/envconfig"
@@ -24,7 +25,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"knative.dev/pkg/logging"
 )
 
 type envStruct struct {
@@ -43,7 +43,7 @@ var (
 // Parse these lazily, to allow clients to set their own in their main() or init().
 func getEnv() *envStruct {
 	envOnce.Do(func() {
-		logger := logging.FromContext(context.Background())
+		logger := slogctx.FromContext(context.Background())
 		if err := envconfig.Process("", &env); err != nil {
 			logger.Warn("Failed to process environment variables", "error", err)
 		}
