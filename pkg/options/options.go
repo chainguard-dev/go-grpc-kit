@@ -127,8 +127,9 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		}
 		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
-			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, otelgrpc.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
-			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, otelgrpc.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
+			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithDefaultCallOptions(
@@ -144,8 +145,9 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		}
 		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
-			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, otelgrpc.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
-			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, otelgrpc.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
+			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
