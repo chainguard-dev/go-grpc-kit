@@ -7,7 +7,7 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-VERSION=v1.54.2
+VERSION=v1.59.0
 URL_BASE=https://raw.githubusercontent.com/golangci/golangci-lint
 URL=$URL_BASE/$VERSION/install.sh
 # If you update the version above you might need to update the checksum

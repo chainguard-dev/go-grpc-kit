@@ -76,7 +76,7 @@ func TestTLS(t *testing.T) {
 	}()
 
 	// grpc client
-	conn, err := grpc.Dial(lis.Addr().String(),
+	conn, err := grpc.NewClient(lis.Addr().String(),
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 		// Send password to verify gRPC doesn't reject it.
 		grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "hunter2"})}),

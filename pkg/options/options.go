@@ -130,7 +130,6 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
 			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
-			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithDefaultCallOptions(
 				grpc.MaxCallRecvMsgSize(RecvMsgSize),
@@ -148,7 +147,6 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
 			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
-			grpc.WithBlock(),
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
 			})),

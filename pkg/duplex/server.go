@@ -113,6 +113,7 @@ func (d *Duplex) ListenAndServe(_ context.Context) error {
 // ListenAndServe starts both the gRPC server and HTTP Gateway MUX on the given listener.
 // Note: This call is blocking.
 // #nosec G114 -- used only for testing tls.
+// nolint:gosec
 func (d *Duplex) Serve(_ context.Context, listener net.Listener) error {
 	return http.Serve(listener, grpcHandlerFunc(d.Server, d.MUX))
 }
