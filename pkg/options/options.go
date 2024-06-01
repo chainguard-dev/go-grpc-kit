@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"chainguard.dev/go-grpc-kit/pkg/trace"
 	"github.com/chainguard-dev/slogctx"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -128,6 +129,7 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+			grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
 			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
 			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -145,6 +147,7 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+			grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
 			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
 			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
