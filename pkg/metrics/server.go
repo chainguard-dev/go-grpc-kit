@@ -12,7 +12,7 @@ import (
 	"net/http/pprof"
 	"time"
 
-	"github.com/chainguard-dev/slogctx"
+	"github.com/chainguard-dev/clog"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
@@ -31,7 +31,7 @@ import (
 //
 //	defer metrics.SetupTracer(ctx)()
 func SetupTracer(ctx context.Context) func() {
-	logger := slogctx.FromContext(ctx)
+	logger := clog.FromContext(ctx)
 
 	traceExporter, err := otlptracegrpc.New(ctx)
 	if err != nil {
