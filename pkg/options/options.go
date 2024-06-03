@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"chainguard.dev/go-grpc-kit/pkg/trace"
-	"github.com/chainguard-dev/slogctx"
+	"github.com/chainguard-dev/clog"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/kelseyhightower/envconfig"
@@ -44,7 +44,7 @@ var (
 // Parse these lazily, to allow clients to set their own in their main() or init().
 func getEnv() *envStruct {
 	envOnce.Do(func() {
-		logger := slogctx.FromContext(context.Background())
+		logger := clog.FromContext(context.Background())
 		if err := envconfig.Process("", &env); err != nil {
 			logger.Warn("Failed to process environment variables", "error", err)
 		}
