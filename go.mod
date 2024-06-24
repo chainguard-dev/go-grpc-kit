@@ -3,7 +3,7 @@ module chainguard.dev/go-grpc-kit
 go 1.21.2
 
 require (
-	github.com/chainguard-dev/clog v1.3.1
+	github.com/chainguard-dev/clog v1.4.0
 	github.com/google/go-cmp v0.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.1-0.20210315223345-82c243799c99
