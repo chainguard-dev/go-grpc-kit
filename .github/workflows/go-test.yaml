@@ -37,5 +37,4 @@ jobs:
         check-latest: true
 
     - run: |
-        # Exclude running unit tests against third_party repos.
-        go test -race $(go list ./... | grep -v third_party/)
+        go test -race ./...
