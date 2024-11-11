@@ -26,6 +26,7 @@ import (
 
 	"chainguard.dev/go-grpc-kit/pkg/duplex"
 	pb "chainguard.dev/go-grpc-kit/pkg/tls/internal/proto/helloworld"
+	"golang.org/x/net/http2"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -96,7 +97,7 @@ func TestTLS(t *testing.T) {
 
 	// http client
 	httpClient := &http.Client{
-		Transport: &http.Transport{
+		Transport: &http2.Transport{
 			TLSClientConfig: tlsConfig,
 		},
 	}
@@ -152,6 +153,7 @@ func generateTLS(tmpl *x509.Certificate) (*tls.Config, error) {
 	// configuration of the certificate what we want to
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
+		NextProtos:   []string{"h2"}, // Specify ALPN protocol
 		RootCAs:      pool,
 	}, nil
 }
