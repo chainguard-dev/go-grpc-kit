@@ -114,7 +114,7 @@ func enableClientTimeHistogram() {
 	}
 }
 
-func ClientOption() []option.ClientOption {
+func ClientOptions() []option.ClientOption {
 	var cos []option.ClientOption
 
 	for _, o := range GRPCDialOptions() {
