@@ -115,9 +115,10 @@ func enableClientTimeHistogram() {
 }
 
 func ClientOptions() []option.ClientOption {
-	var cos []option.ClientOption
+	do := GRPCDialOptions()
+	cos := make([]option.ClientOption, len(do))
 
-	for _, o := range GRPCDialOptions() {
+	for _, o := range do {
 		cos = append(cos, option.WithGRPCDialOption(o))
 	}
 	return cos
