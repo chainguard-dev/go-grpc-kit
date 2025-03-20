@@ -23,6 +23,7 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/kelseyhightower/envconfig"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -113,12 +114,31 @@ func enableClientTimeHistogram() {
 	}
 }
 
-func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
+func ClientOptions() []option.ClientOption {
+	do := GRPCDialOptions()
+	cos := make([]option.ClientOption, len(do))
+
+	for _, o := range do {
+		cos = append(cos, option.WithGRPCDialOption(o))
+	}
+	return cos
+}
+
+func GRPCDialOptions() []grpc.DialOption {
 	retryOpts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffExponential(100 * time.Millisecond)),
 		grpc_retry.WithMax(getEnv().GrpcClientMaxRetry),
 	}
 
+	return []grpc.DialOption{
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
+		grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
+		grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
+	}
+}
+
+func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 	switch delegate.Scheme {
 	case "http":
 		port := "80"
@@ -127,17 +147,12 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 			port = delegate.Port()
 		}
 		enableClientTimeHistogram()
-		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
-			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-			grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
-			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
-			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
+		return net.JoinHostPort(delegate.Hostname(), port), append(GRPCDialOptions(), []grpc.DialOption{
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithDefaultCallOptions(
 				grpc.MaxCallRecvMsgSize(RecvMsgSize),
 				grpc.MaxCallSendMsgSize(SendMsgSize),
-			),
-		}
+			)}...)
 	case "https":
 		port := "443"
 		// Explicit port from the user signifies we should override the scheme-based defaults.
@@ -145,19 +160,14 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 			port = delegate.Port()
 		}
 		enableClientTimeHistogram()
-		return net.JoinHostPort(delegate.Hostname(), port), []grpc.DialOption{
-			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-			grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
-			grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
-			grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
+		return net.JoinHostPort(delegate.Hostname(), port), append(GRPCDialOptions(), []grpc.DialOption{
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
 			})),
 			grpc.WithDefaultCallOptions(
 				grpc.MaxCallRecvMsgSize(RecvMsgSize),
 				grpc.MaxCallSendMsgSize(SendMsgSize),
-			),
-		}
+			)}...)
 
 	case "bufnet": // This is to support testing, it will not pass webhook validation.
 		return "bufnet", []grpc.DialOption{
