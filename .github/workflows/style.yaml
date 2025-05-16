@@ -15,6 +15,11 @@ jobs:
     name: check gofmt
     runs-on: ubuntu-latest
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
       - name: Check out code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -24,7 +29,7 @@ jobs:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: chainguard-dev/actions/gofmt@main
+      - uses: chainguard-dev/actions/gofmt@7d40b853210d271a28ac2822827f965f6f1e78fa # main
         with:
           args: -s
 
@@ -32,6 +37,11 @@ jobs:
     name: check goimports
     runs-on: ubuntu-latest
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
       - name: Check out code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -41,13 +51,18 @@ jobs:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: chainguard-dev/actions/goimports@main
+      - uses: chainguard-dev/actions/goimports@7d40b853210d271a28ac2822827f965f6f1e78fa # main
 
   golangci-lint:
     name: golangci-lint
     runs-on: ubuntu-latest
 
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Go
@@ -69,6 +84,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
       - name: Check out code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -78,10 +98,10 @@ jobs:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: chainguard-dev/actions/trailing-space@main
+      - uses: chainguard-dev/actions/trailing-space@7d40b853210d271a28ac2822827f965f6f1e78fa # main
         if: ${{ always() }}
 
-      - uses: chainguard-dev/actions/eof-newline@main
+      - uses: chainguard-dev/actions/eof-newline@7d40b853210d271a28ac2822827f965f6f1e78fa # main
         if: ${{ always() }}
 
       - uses: reviewdog/action-tflint@41b4770c9d9e50741c20e431986b33124a07ca52 # v1.24.2
