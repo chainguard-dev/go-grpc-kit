@@ -9,11 +9,15 @@ on:
   push:
     branches: [ 'main', 'release-*' ]
 
+permissions: {}
+
 jobs:
 
   verify:
     name: Verify Codegen
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     env:
       GOPATH: ${{ github.workspace }}
