@@ -5,7 +5,8 @@ name: Boilerplate
 
 on:
   pull_request:
-    branches: [ 'main', 'release-*' ]
+    branches:
+      - 'main'
 
 permissions: {}
 
@@ -14,8 +15,10 @@ jobs:
   check:
     name: Boilerplate Check
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
+
     strategy:
       fail-fast: false # Keep running if one leg fails.
       matrix:
@@ -34,10 +37,15 @@ jobs:
           language: YAML
 
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
       - name: Check out code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - uses: chainguard-dev/actions/boilerplate@main
+      - uses: chainguard-dev/actions/boilerplate@5363dd9eb48083bbf7674a4bbe62d71c3b230edd # v1.1.2
         with:
           extension: ${{ matrix.extension }}
           language: ${{ matrix.language }}
