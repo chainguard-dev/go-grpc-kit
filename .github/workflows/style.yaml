@@ -5,9 +5,11 @@ name: Code Style
 
 on:
   pull_request:
-    branches: [ 'main', 'release-*' ]
+    branches:
+      - 'main'
   push:
-    branches: [ 'main', 'release-*' ]
+    branches:
+      - 'main'
 
 permissions: {}
 
@@ -16,8 +18,10 @@ jobs:
   gofmt:
     name: check gofmt
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
+
     steps:
       - name: Check out code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -28,15 +32,17 @@ jobs:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: chainguard-dev/actions/gofmt@main
+      - uses: chainguard-dev/actions/gofmt@5363dd9eb48083bbf7674a4bbe62d71c3b230edd # v1.1.2
         with:
           args: -s
 
   goimports:
     name: check goimports
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
+
     steps:
       - name: Check out code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -47,13 +53,15 @@ jobs:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: chainguard-dev/actions/goimports@main
+      - uses: chainguard-dev/actions/goimports@5363dd9eb48083bbf7674a4bbe62d71c3b230edd # v1.1.2
 
   golangci-lint:
     name: golangci-lint
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
+      pull-requests: read
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -66,15 +74,15 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@4696ba8babb6127d732c3c6dde519db15edab9ea # v6.5.1
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8.0.0
         with:
           # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
-          version: v1.60
-          args: --timeout=5m
+          version: v2.1
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
 
@@ -88,23 +96,23 @@ jobs:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: chainguard-dev/actions/trailing-space@main
+      - uses: chainguard-dev/actions/trailing-space@5363dd9eb48083bbf7674a4bbe62d71c3b230edd # v1.1.2
         if: ${{ always() }}
 
-      - uses: chainguard-dev/actions/eof-newline@main
+      - uses: chainguard-dev/actions/eof-newline@5363dd9eb48083bbf7674a4bbe62d71c3b230edd # v1.1.2
         if: ${{ always() }}
 
       - uses: reviewdog/action-tflint@41b4770c9d9e50741c20e431986b33124a07ca52 # v1.24.2
         if: ${{ always() }}
         with:
           github_token: ${{ secrets.github_token }}
-          fail_on_error: true
+          fail_level: warning
 
       - uses: reviewdog/action-misspell@9daa94af4357dddb6fd3775de806bc0a8e98d3e4 # v1.26.3
         if: ${{ always() }}
         with:
           github_token: ${{ secrets.github_token }}
-          fail_on_error: true
+          fail_level: warning
           locale: "US"
           exclude: |
             **/go.sum
