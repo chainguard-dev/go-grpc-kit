@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/chainguard-dev/clog"
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -22,6 +23,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 )
+
+var serverMetrics *grpc_prometheus.ServerMetrics
 
 // Fractions >= 1 will always sample. Fractions < 0 are treated as zero. To
 // respect the parent trace's `SampledFlag`, the `TraceIDRatioBased` sampler
@@ -100,4 +103,12 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 			log.Fatalf("listen and server for http /metrics = %v", err)
 		}
 	}(listenAddr)
+}
+
+func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
+	return serverMetrics.UnaryServerInterceptor()
+}
+
+func StreamServerInterceptor() grpc.StreamServerInterceptor {
+	return serverMetrics.StreamServerInterceptor()
 }
