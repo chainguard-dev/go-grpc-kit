@@ -64,7 +64,8 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 	grpc_prometheus.Register(server)
 	grpc_prometheus.EnableHandlingTimeHistogram(
 		grpc_prometheus.WithHistogramBuckets(
-			[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600},
+			// Odd upper bound to avoid conflating a bounded histogram with a timeout.
+			[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200, 2400, 3666},
 		),
 	)
 
