@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
 	"github.com/chainguard-dev/clog"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
@@ -24,6 +25,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 type initStuff struct {
@@ -82,6 +84,28 @@ func SetupTracer(ctx context.Context) func() {
 			logger.Infof("Error shutting down tracer provider: %v", err)
 		}
 	}
+}
+
+func LabelsFromContext(ctx context.Context) prometheus.Labels {
+	labels := prometheus.Labels{}
+
+	cid := "unknown"
+	rid := "unknown"
+
+	clientids := metadata.ValueFromIncomingContext(ctx, clientid.CGClientID)
+	if clientids != nil {
+		cid = clientids[0]
+	}
+
+	requestids := metadata.ValueFromIncomingContext(ctx, clientid.CGRequestID)
+	if requestids != nil {
+		rid = requestids[0]
+	}
+
+	labels[clientid.CGClientID] = cid
+	labels[clientid.CGRequestID] = rid
+
+	return labels
 }
 
 func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
