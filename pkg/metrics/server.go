@@ -90,20 +90,13 @@ func LabelsFromContext(ctx context.Context) prometheus.Labels {
 	labels := prometheus.Labels{}
 
 	cid := "unknown"
-	rid := "unknown"
 
 	clientids := metadata.ValueFromIncomingContext(ctx, clientid.CGClientID)
 	if clientids != nil {
 		cid = clientids[0]
 	}
 
-	requestids := metadata.ValueFromIncomingContext(ctx, clientid.CGRequestID)
-	if requestids != nil {
-		rid = requestids[0]
-	}
-
 	labels[clientid.CGClientID] = cid
-	labels[clientid.CGRequestID] = rid
 
 	return labels
 }
