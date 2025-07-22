@@ -63,7 +63,7 @@ jobs:
         ./hack/update-codegen.sh
 
     - name: Verify
-      uses: chainguard-dev/actions/nodiff@86e8917a5f452c794e263fddae12d25a44b18f18 # main
+      uses: chainguard-dev/actions/nodiff@ae2f0393ff2a60c572ff4d3485f406e8f36dfd38 # main
       with:
         path: ./src/github.com/${{ github.repository }}
         fixup-command: "./hack/update-codegen.sh"
