@@ -54,7 +54,7 @@ func getEnv() *envStruct {
 		}
 
 		hopt := grpc_prometheus.WithHistogramBuckets(
-			[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600},
+			[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200, 2400, 3666},
 		)
 
 		cmOpts := []grpc_prometheus.ClientMetricsOption{}

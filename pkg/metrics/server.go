@@ -12,7 +12,9 @@ import (
 	"net/http/pprof"
 	"time"
 
+	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
 	"github.com/chainguard-dev/clog"
+
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -22,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 var serverMetrics *grpc_prometheus.ServerMetrics
@@ -63,11 +66,33 @@ func SetupTracer(ctx context.Context) func() {
 	}
 }
 
+func LabelsFromContext(ctx context.Context) prometheus.Labels {
+	labels := prometheus.Labels{}
+
+	cid := "unknown"
+	rid := "unknown"
+
+	clientids := metadata.ValueFromIncomingContext(ctx, clientid.CGClientID)
+	if clientids != nil {
+		cid = clientids[0]
+	}
+
+	requestids := metadata.ValueFromIncomingContext(ctx, clientid.CGRequestID)
+	if requestids != nil {
+		rid = requestids[0]
+	}
+
+	labels[clientid.CGClientID] = cid
+	labels[clientid.CGRequestID] = rid
+
+	return labels
+}
+
 func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
 	serverMetrics = grpc_prometheus.NewServerMetrics(
 		grpc_prometheus.WithServerHandlingTimeHistogram(
 			grpc_prometheus.WithHistogramBuckets(
-				[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600},
+				[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200, 2400, 3666},
 			),
 		),
 	)
@@ -107,9 +132,13 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 }
 
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
-	return serverMetrics.UnaryServerInterceptor()
+	return serverMetrics.UnaryServerInterceptor(
+		grpc_prometheus.WithLabelsFromContext(LabelsFromContext),
+	)
 }
 
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
-	return serverMetrics.StreamServerInterceptor()
+	return serverMetrics.StreamServerInterceptor(
+		grpc_prometheus.WithLabelsFromContext(LabelsFromContext),
+	)
 }

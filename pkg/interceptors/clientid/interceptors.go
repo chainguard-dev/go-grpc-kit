@@ -26,8 +26,8 @@ func AppendClientID(ctx context.Context) context.Context {
 		return ctx
 	}
 	return metadata.AppendToOutgoingContext(ctx,
-		"clientid", getClientID(),
-		"requestid", uuid.New().String(),
+		CGClientID, getClientID(),
+		CGRequestID, uuid.New().String(),
 	)
 }
 
