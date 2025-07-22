@@ -90,6 +90,7 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 		),
 	)
 	prometheus.MustRegister(serverMetrics)
+	serverMetrics.InitializeMetrics(server)
 
 	go func(addr string) {
 		mux := http.NewServeMux()
