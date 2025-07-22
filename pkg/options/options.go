@@ -17,11 +17,13 @@ import (
 	"sync"
 	"time"
 
+	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
 	"chainguard.dev/go-grpc-kit/pkg/trace"
 	"github.com/chainguard-dev/clog"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
@@ -39,7 +41,8 @@ type envStruct struct {
 var (
 	envOnce sync.Once
 
-	env envStruct
+	env           envStruct
+	clientMetrics *grpc_prometheus.ClientMetrics
 )
 
 // Parse these lazily, to allow clients to set their own in their main() or init().
@@ -49,6 +52,25 @@ func getEnv() *envStruct {
 		if err := envconfig.Process("", &env); err != nil {
 			logger.Warn("Failed to process environment variables", "error", err)
 		}
+
+		hopt := grpc_prometheus.WithHistogramBuckets(
+			[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200, 2400, 3666},
+		)
+
+		cmOpts := []grpc_prometheus.ClientMetricsOption{}
+
+		if env.EnableClientHandlingTimeHistogram {
+			cmOpts = append(cmOpts, grpc_prometheus.WithClientHandlingTimeHistogram(hopt))
+		}
+		if env.EnableClientStreamReceiveTimeHistogram {
+			cmOpts = append(cmOpts, grpc_prometheus.WithClientStreamRecvHistogram(hopt))
+		}
+		if env.EnableClientStreamSendTimeHistogram {
+			cmOpts = append(cmOpts, grpc_prometheus.WithClientStreamSendHistogram(hopt))
+		}
+
+		clientMetrics = grpc_prometheus.NewClientMetrics(cmOpts...)
+		prometheus.MustRegister(clientMetrics)
 	})
 	return &env
 }
@@ -98,22 +120,6 @@ var (
 	SendMsgSize = 100 * 1024 * 1024 // 100MB
 )
 
-func enableClientTimeHistogram() {
-	hopt := grpc_prometheus.WithHistogramBuckets(
-		[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600},
-	)
-
-	if getEnv().EnableClientHandlingTimeHistogram {
-		grpc_prometheus.EnableClientHandlingTimeHistogram(hopt)
-	}
-	if getEnv().EnableClientStreamReceiveTimeHistogram {
-		grpc_prometheus.EnableClientStreamReceiveTimeHistogram(hopt)
-	}
-	if getEnv().EnableClientStreamSendTimeHistogram {
-		grpc_prometheus.EnableClientStreamSendTimeHistogram(hopt)
-	}
-}
-
 func ClientOptions() []option.ClientOption {
 	do := GRPCDialOptions()
 	cos := make([]option.ClientOption, 0, len(do))
@@ -133,8 +139,8 @@ func GRPCDialOptions() []grpc.DialOption {
 	return []grpc.DialOption{
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
-		grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
-		grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
+		grpc.WithChainUnaryInterceptor(clientid.UnaryClientInterceptor(), clientMetrics.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
+		grpc.WithChainStreamInterceptor(clientid.StreamClientInterceptor(), clientMetrics.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
 	}
 }
 
@@ -146,7 +152,6 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		if delegate.Port() != "" {
 			port = delegate.Port()
 		}
-		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), append(GRPCDialOptions(), []grpc.DialOption{
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithDefaultCallOptions(
@@ -159,7 +164,6 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		if delegate.Port() != "" {
 			port = delegate.Port()
 		}
-		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), append(GRPCDialOptions(), []grpc.DialOption{
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
