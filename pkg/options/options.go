@@ -19,8 +19,8 @@ import (
 
 	"chainguard.dev/go-grpc-kit/pkg/trace"
 	"github.com/chainguard-dev/clog"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -37,18 +37,17 @@ type envStruct struct {
 	GrpcClientMaxRetry                     uint `envconfig:"GRPC_CLIENT_MAX_RETRY" default:"0"`
 }
 
-var (
-	envOnce sync.Once
-
+type initStuff struct {
 	env           envStruct
 	clientMetrics *grpc_prometheus.ClientMetrics
-)
+}
 
-// Parse these lazily, to allow clients to set their own in their main() or init().
-func getEnv() *envStruct {
-	envOnce.Do(func() {
+var (
+	state = sync.OnceValue(func() initStuff {
+		init := initStuff{}
+
 		logger := clog.FromContext(context.Background())
-		if err := envconfig.Process("", &env); err != nil {
+		if err := envconfig.Process("", &init.env); err != nil {
 			logger.Warn("Failed to process environment variables", "error", err)
 		}
 
@@ -58,21 +57,22 @@ func getEnv() *envStruct {
 
 		cmOpts := []grpc_prometheus.ClientMetricsOption{}
 
-		if env.EnableClientHandlingTimeHistogram {
+		if init.env.EnableClientHandlingTimeHistogram {
 			cmOpts = append(cmOpts, grpc_prometheus.WithClientHandlingTimeHistogram(hopt))
 		}
-		if env.EnableClientStreamReceiveTimeHistogram {
+		if init.env.EnableClientStreamReceiveTimeHistogram {
 			cmOpts = append(cmOpts, grpc_prometheus.WithClientStreamRecvHistogram(hopt))
 		}
-		if env.EnableClientStreamSendTimeHistogram {
+		if init.env.EnableClientStreamSendTimeHistogram {
 			cmOpts = append(cmOpts, grpc_prometheus.WithClientStreamSendHistogram(hopt))
 		}
 
-		clientMetrics = grpc_prometheus.NewClientMetrics(cmOpts...)
-		prometheus.MustRegister(clientMetrics)
+		init.clientMetrics = grpc_prometheus.NewClientMetrics(cmOpts...)
+		prometheus.MustRegister(init.clientMetrics)
+
+		return init
 	})
-	return &env
-}
+)
 
 // ListenerForTest is to support bufnet in our testing.
 var ListenerForTest DialableListener
@@ -132,14 +132,14 @@ func ClientOptions() []option.ClientOption {
 func GRPCDialOptions() []grpc.DialOption {
 	retryOpts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffExponential(100 * time.Millisecond)),
-		grpc_retry.WithMax(getEnv().GrpcClientMaxRetry),
+		grpc_retry.WithMax(state().env.GrpcClientMaxRetry),
 	}
 
 	return []grpc.DialOption{
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
-		grpc.WithChainUnaryInterceptor(clientMetrics.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
-		grpc.WithChainStreamInterceptor(clientMetrics.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
+		grpc.WithChainUnaryInterceptor(state().clientMetrics.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
+		grpc.WithChainStreamInterceptor(state().clientMetrics.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
 	}
 }
 

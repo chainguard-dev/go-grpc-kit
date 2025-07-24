@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/pprof"
+	"sync"
 	"time"
 
 	"github.com/chainguard-dev/clog"
@@ -25,7 +26,26 @@ import (
 	"google.golang.org/grpc"
 )
 
-var serverMetrics *grpc_prometheus.ServerMetrics
+type initStuff struct {
+	serverMetrics *grpc_prometheus.ServerMetrics
+}
+
+var (
+	state = sync.OnceValue(func() initStuff {
+		init := initStuff{}
+
+		init.serverMetrics = grpc_prometheus.NewServerMetrics(
+			grpc_prometheus.WithServerHandlingTimeHistogram(
+				grpc_prometheus.WithHistogramBuckets(
+					[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200, 2400, 3666},
+				),
+			),
+		)
+		prometheus.MustRegister(init.serverMetrics)
+
+		return init
+	})
+)
 
 // Fractions >= 1 will always sample. Fractions < 0 are treated as zero. To
 // respect the parent trace's `SampledFlag`, the `TraceIDRatioBased` sampler
@@ -65,15 +85,7 @@ func SetupTracer(ctx context.Context) func() {
 }
 
 func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
-	serverMetrics = grpc_prometheus.NewServerMetrics(
-		grpc_prometheus.WithServerHandlingTimeHistogram(
-			grpc_prometheus.WithHistogramBuckets(
-				[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200, 2400, 3666},
-			),
-		),
-	)
-	prometheus.MustRegister(serverMetrics)
-	serverMetrics.InitializeMetrics(server)
+	state().serverMetrics.InitializeMetrics(server)
 
 	go func(addr string) {
 		mux := http.NewServeMux()
@@ -109,9 +121,9 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 }
 
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
-	return serverMetrics.UnaryServerInterceptor()
+	return state().serverMetrics.UnaryServerInterceptor()
 }
 
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
-	return serverMetrics.StreamServerInterceptor()
+	return state().serverMetrics.StreamServerInterceptor()
 }
