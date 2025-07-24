@@ -19,7 +19,7 @@ import (
 
 	"chainguard.dev/go-grpc-kit/pkg/trace"
 	"github.com/chainguard-dev/clog"
-	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/kelseyhightower/envconfig"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
