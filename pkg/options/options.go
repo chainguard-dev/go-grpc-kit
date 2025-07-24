@@ -19,9 +19,10 @@ import (
 
 	"chainguard.dev/go-grpc-kit/pkg/trace"
 	"github.com/chainguard-dev/clog"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
@@ -36,22 +37,42 @@ type envStruct struct {
 	GrpcClientMaxRetry                     uint `envconfig:"GRPC_CLIENT_MAX_RETRY" default:"0"`
 }
 
+type initStuff struct {
+	env           envStruct
+	clientMetrics *grpc_prometheus.ClientMetrics
+}
+
 var (
-	envOnce sync.Once
+	state = sync.OnceValue(func() initStuff {
+		init := initStuff{}
 
-	env envStruct
-)
-
-// Parse these lazily, to allow clients to set their own in their main() or init().
-func getEnv() *envStruct {
-	envOnce.Do(func() {
 		logger := clog.FromContext(context.Background())
-		if err := envconfig.Process("", &env); err != nil {
+		if err := envconfig.Process("", &init.env); err != nil {
 			logger.Warn("Failed to process environment variables", "error", err)
 		}
+
+		hopt := grpc_prometheus.WithHistogramBuckets(
+			[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200, 2400, 3666},
+		)
+
+		cmOpts := []grpc_prometheus.ClientMetricsOption{}
+
+		if init.env.EnableClientHandlingTimeHistogram {
+			cmOpts = append(cmOpts, grpc_prometheus.WithClientHandlingTimeHistogram(hopt))
+		}
+		if init.env.EnableClientStreamReceiveTimeHistogram {
+			cmOpts = append(cmOpts, grpc_prometheus.WithClientStreamRecvHistogram(hopt))
+		}
+		if init.env.EnableClientStreamSendTimeHistogram {
+			cmOpts = append(cmOpts, grpc_prometheus.WithClientStreamSendHistogram(hopt))
+		}
+
+		init.clientMetrics = grpc_prometheus.NewClientMetrics(cmOpts...)
+		prometheus.MustRegister(init.clientMetrics)
+
+		return init
 	})
-	return &env
-}
+)
 
 // ListenerForTest is to support bufnet in our testing.
 var ListenerForTest DialableListener
@@ -98,22 +119,6 @@ var (
 	SendMsgSize = 100 * 1024 * 1024 // 100MB
 )
 
-func enableClientTimeHistogram() {
-	hopt := grpc_prometheus.WithHistogramBuckets(
-		[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600},
-	)
-
-	if getEnv().EnableClientHandlingTimeHistogram {
-		grpc_prometheus.EnableClientHandlingTimeHistogram(hopt)
-	}
-	if getEnv().EnableClientStreamReceiveTimeHistogram {
-		grpc_prometheus.EnableClientStreamReceiveTimeHistogram(hopt)
-	}
-	if getEnv().EnableClientStreamSendTimeHistogram {
-		grpc_prometheus.EnableClientStreamSendTimeHistogram(hopt)
-	}
-}
-
 func ClientOptions() []option.ClientOption {
 	do := GRPCDialOptions()
 	cos := make([]option.ClientOption, 0, len(do))
@@ -127,14 +132,14 @@ func ClientOptions() []option.ClientOption {
 func GRPCDialOptions() []grpc.DialOption {
 	retryOpts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffExponential(100 * time.Millisecond)),
-		grpc_retry.WithMax(getEnv().GrpcClientMaxRetry),
+		grpc_retry.WithMax(state().env.GrpcClientMaxRetry),
 	}
 
 	return []grpc.DialOption{
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
-		grpc.WithChainUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor, grpc_retry.UnaryClientInterceptor(retryOpts...)),
-		grpc.WithChainStreamInterceptor(grpc_prometheus.StreamClientInterceptor, grpc_retry.StreamClientInterceptor(retryOpts...)),
+		grpc.WithChainUnaryInterceptor(state().clientMetrics.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
+		grpc.WithChainStreamInterceptor(state().clientMetrics.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
 	}
 }
 
@@ -146,7 +151,6 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		if delegate.Port() != "" {
 			port = delegate.Port()
 		}
-		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), append(GRPCDialOptions(), []grpc.DialOption{
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithDefaultCallOptions(
@@ -159,7 +163,6 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		if delegate.Port() != "" {
 			port = delegate.Port()
 		}
-		enableClientTimeHistogram()
 		return net.JoinHostPort(delegate.Hostname(), port), append(GRPCDialOptions(), []grpc.DialOption{
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
