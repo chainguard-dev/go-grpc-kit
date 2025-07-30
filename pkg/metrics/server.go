@@ -13,9 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
-	"github.com/chainguard-dev/clog"
-
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -26,6 +23,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+
+	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
+	"github.com/chainguard-dev/clog"
 )
 
 type initStuff struct {
@@ -138,9 +138,13 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 }
 
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
-	return state().serverMetrics.UnaryServerInterceptor()
+	return state().serverMetrics.UnaryServerInterceptor(
+		grpc_prometheus.WithLabelsFromContext(LabelsFromContext),
+	)
 }
 
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
-	return state().serverMetrics.StreamServerInterceptor()
+	return state().serverMetrics.StreamServerInterceptor(
+		grpc_prometheus.WithLabelsFromContext(LabelsFromContext),
+	)
 }
