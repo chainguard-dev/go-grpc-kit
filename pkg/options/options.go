@@ -17,8 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"chainguard.dev/go-grpc-kit/pkg/trace"
-	"github.com/chainguard-dev/clog"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 	"github.com/kelseyhightower/envconfig"
@@ -28,6 +26,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
+	"chainguard.dev/go-grpc-kit/pkg/trace"
+	"github.com/chainguard-dev/clog"
 )
 
 type envStruct struct {
@@ -138,8 +140,8 @@ func GRPCDialOptions() []grpc.DialOption {
 	return []grpc.DialOption{
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
-		grpc.WithChainUnaryInterceptor(state().clientMetrics.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
-		grpc.WithChainStreamInterceptor(state().clientMetrics.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
+		grpc.WithChainUnaryInterceptor(clientid.UnaryClientInterceptor(), state().clientMetrics.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
+		grpc.WithChainStreamInterceptor(clientid.StreamClientInterceptor(), state().clientMetrics.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
 	}
 }
 
