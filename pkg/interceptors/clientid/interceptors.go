@@ -25,7 +25,7 @@ func getClientID() string {
 	return e
 }
 
-func AppendClientID(ctx context.Context) context.Context {
+func appendClientID(ctx context.Context) context.Context {
 	if metadata.ValueFromIncomingContext(ctx, CGClientID) != nil && metadata.ValueFromIncomingContext(ctx, CGRequestID) != nil {
 		// Return original context if it already has chainguard client id and request id.
 		return ctx
@@ -38,7 +38,7 @@ func AppendClientID(ctx context.Context) context.Context {
 
 func UnaryClientInterceptor() grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		nc := AppendClientID(ctx)
+		nc := appendClientID(ctx)
 		// Make the call
 		return invoker(nc, method, req, reply, cc, opts...)
 	}
@@ -46,7 +46,7 @@ func UnaryClientInterceptor() grpc.UnaryClientInterceptor {
 
 func StreamClientInterceptor() grpc.StreamClientInterceptor {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-		nc := AppendClientID(ctx)
+		nc := appendClientID(ctx)
 		// Make the call
 		return streamer(nc, desc, cc, method, opts...)
 	}

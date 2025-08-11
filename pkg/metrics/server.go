@@ -86,19 +86,13 @@ func SetupTracer(ctx context.Context) func() {
 	}
 }
 
-func LabelsFromContext(ctx context.Context) prometheus.Labels {
-	labels := prometheus.Labels{}
-
+func labelsFromContext(ctx context.Context) prometheus.Labels {
 	cid := "unknown"
-
 	clientids := metadata.ValueFromIncomingContext(ctx, clientid.CGClientID)
 	if clientids != nil {
 		cid = clientids[0]
 	}
-
-	labels[clientid.CGClientID] = cid
-
-	return labels
+	return prometheus.Labels{clientid.CGClientID: cid}
 }
 
 func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
@@ -139,12 +133,12 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	return state().serverMetrics.UnaryServerInterceptor(
-		grpc_prometheus.WithLabelsFromContext(LabelsFromContext),
+		grpc_prometheus.WithLabelsFromContext(labelsFromContext),
 	)
 }
 
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
 	return state().serverMetrics.StreamServerInterceptor(
-		grpc_prometheus.WithLabelsFromContext(LabelsFromContext),
+		grpc_prometheus.WithLabelsFromContext(labelsFromContext),
 	)
 }
