@@ -25,6 +25,8 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+// TODO(kleung): this may be flaky, due to allocating port and then freeing only to reuse.
+// Refactor API to support passing listener instead of address.
 func GetUnusedPort(t *testing.T) int {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
