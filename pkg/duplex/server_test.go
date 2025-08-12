@@ -58,7 +58,6 @@ func TestMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}
-	//defer mlis.Close()
 	t.Logf("server listening at %v", mlis.Addr())
 
 	d.RegisterAndServeMetrics(mlis, false)
