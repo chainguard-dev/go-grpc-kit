@@ -8,6 +8,7 @@ package metrics
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"sync"
@@ -95,40 +96,57 @@ func labelsFromContext(ctx context.Context) prometheus.Labels {
 	return prometheus.Labels{clientid.CGClientID: cid}
 }
 
+func getServer(enablePprof bool) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+
+	if enablePprof {
+		// pprof handles
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
+		mux.Handle("/debug/pprof/block", pprof.Handler("block"))
+		mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+		mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+		mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
+		mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+
+		log.Println("registering handle for /debug/pprof")
+	}
+
+	return &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 600 * time.Second,
+	}
+}
+
+// Used ONLY for testing
+func RegisterAndServe(server *grpc.Server, listener net.Listener, enablePprof bool) {
+	state().serverMetrics.InitializeMetrics(server)
+
+	go func() {
+		s := getServer(enablePprof)
+
+		if err := s.Serve(listener); err != nil {
+			log.Fatalf("serve for http /metrics = %v", err)
+		}
+	}()
+}
+
 func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
 	state().serverMetrics.InitializeMetrics(server)
 
-	go func(addr string) {
-		mux := http.NewServeMux()
-		mux.Handle("/metrics", promhttp.Handler())
+	go func() {
+		s := getServer(enablePprof)
+		s.Addr = listenAddr
 
-		if enablePprof {
-			// pprof handles
-			mux.HandleFunc("/debug/pprof/", pprof.Index)
-			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-			mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
-			mux.Handle("/debug/pprof/block", pprof.Handler("block"))
-			mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-			mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-			mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
-			mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
-
-			log.Println("registering handle for /debug/pprof")
+		if err := s.ListenAndServe(); err != nil {
+			log.Fatalf("listen and serve for http /metrics = %v", err)
 		}
-
-		server := &http.Server{
-			Addr:              addr,
-			Handler:           mux,
-			ReadHeaderTimeout: 600 * time.Second,
-		}
-
-		if err := server.ListenAndServe(); err != nil {
-			log.Fatalf("listen and server for http /metrics = %v", err)
-		}
-	}(listenAddr)
+	}()
 }
 
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {

@@ -124,3 +124,11 @@ func (d *Duplex) Serve(_ context.Context, listener net.Listener) error {
 func (d *Duplex) RegisterListenAndServeMetrics(port int, enablePprof bool) {
 	metrics.RegisterListenAndServe(d.Server, fmt.Sprintf("%s:%d", d.Host, port), enablePprof)
 }
+
+// RegisterAndServe initializes Prometheus metrics and starts a HTTP
+// /metrics endpoint for exporting Prometheus metrics in the background.
+// Call this *after* all services have been registered.
+// Used ONLY for testing
+func (d *Duplex) RegisterAndServeMetrics(listener net.Listener, enablePprof bool) {
+	metrics.RegisterAndServe(d.Server, listener, enablePprof)
+}
