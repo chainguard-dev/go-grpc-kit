@@ -25,25 +25,10 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// TODO(kleung): this may be flaky, due to allocating port and then freeing only to reuse.
-// Refactor API to support passing listener instead of address.
-func GetUnusedPort(t *testing.T) int {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-
-	// Extract port from the address
-	addr := listener.Addr().(*net.TCPAddr)
-	return addr.Port
-}
-
 func TestMetrics(t *testing.T) {
 	ctx := context.Background()
 
-	// We need to init the listener first so that we can generate a TLS cert
-	// that's bound to the listening IP.
+	// Reserve port for test server.
 	lis, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
@@ -56,15 +41,8 @@ func TestMetrics(t *testing.T) {
 		t.Fatalf("error resolving IP address: %v", err)
 	}
 
-	addr := lis.Addr().String()
-	lis.Close()
-
-	serverPort := ip.Port
-	metricsPort := GetUnusedPort(t)
-	metricsAddr := strings.ReplaceAll(addr, fmt.Sprintf("%d", serverPort), fmt.Sprintf("%d", metricsPort))
-
 	// Setup server
-	d := New(serverPort,
+	d := New(ip.Port,
 		grpc.ChainStreamInterceptor(metrics.StreamServerInterceptor()),
 		grpc.ChainUnaryInterceptor(metrics.UnaryServerInterceptor()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -75,17 +53,25 @@ func TestMetrics(t *testing.T) {
 	}
 
 	// Start metrics endpoint
-	d.RegisterListenAndServeMetrics(metricsPort, false)
+	// Reserve port for test server.
+	mlis, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	//defer mlis.Close()
+	t.Logf("server listening at %v", mlis.Addr())
+
+	d.RegisterAndServeMetrics(mlis, false)
 
 	// Start server
 	go func() {
-		if err := d.ListenAndServe(ctx); err != nil {
+		if err := d.Serve(ctx, lis); err != nil {
 			panic(fmt.Sprintf("failed to serve: %v", err))
 		}
 	}()
 
 	// Setup GRPC client
-	conn, err := grpc.NewClient(addr,
+	conn, err := grpc.NewClient(lis.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -108,7 +94,7 @@ func TestMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to marshal json: %v", err)
 	}
-	url := fmt.Sprintf("http://%s/v1/example/echo", addr)
+	url := fmt.Sprintf("http://%s/v1/example/echo", lis.Addr().String())
 	t.Log(url)
 	httpResp, err := httpClient.Post(url, "application/json", bytes.NewBuffer(body))
 	if err != nil {
@@ -122,7 +108,7 @@ func TestMetrics(t *testing.T) {
 	t.Log("http response:", string(b))
 
 	// Verify metrics endpoint is available and shows request count
-	metricsURL := fmt.Sprintf("http://%s/metrics", metricsAddr)
+	metricsURL := fmt.Sprintf("http://%s/metrics", mlis.Addr().String())
 
 	// Give some time for metrics to be recorded
 	time.Sleep(100 * time.Millisecond)
