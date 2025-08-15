@@ -145,6 +145,14 @@ func GRPCDialOptions() []grpc.DialOption {
 	}
 }
 
+func grpcCallOptions() []grpc.CallOption {
+	return []grpc.CallOption{
+		grpc.WaitForReady(true),
+		grpc.MaxCallRecvMsgSize(RecvMsgSize),
+		grpc.MaxCallSendMsgSize(SendMsgSize),
+	}
+}
+
 func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 	switch delegate.Scheme {
 	case "http":
@@ -156,8 +164,7 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 		return net.JoinHostPort(delegate.Hostname(), port), append(GRPCDialOptions(), []grpc.DialOption{
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithDefaultCallOptions(
-				grpc.MaxCallRecvMsgSize(RecvMsgSize),
-				grpc.MaxCallSendMsgSize(SendMsgSize),
+				grpcCallOptions()...,
 			)}...)
 	case "https":
 		port := "443"
@@ -170,8 +177,7 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 				MinVersion: tls.VersionTLS12,
 			})),
 			grpc.WithDefaultCallOptions(
-				grpc.MaxCallRecvMsgSize(RecvMsgSize),
-				grpc.MaxCallSendMsgSize(SendMsgSize),
+				grpcCallOptions()...,
 			)}...)
 
 	case "bufnet": // This is to support testing, it will not pass webhook validation.
