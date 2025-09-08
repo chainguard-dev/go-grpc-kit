@@ -1,6 +1,6 @@
 module chainguard.dev/go-grpc-kit
 
-go 1.23.1
+go 1.24.0
 
 require (
 	github.com/chainguard-dev/clog v1.7.0
@@ -16,7 +16,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.38.0
 	go.opentelemetry.io/otel/sdk v1.38.0
 	golang.org/x/net v0.43.0
-	golang.org/x/oauth2 v0.30.0
+	golang.org/x/oauth2 v0.31.0
 	google.golang.org/api v0.248.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5
 	google.golang.org/grpc v1.75.0
