@@ -18,7 +18,9 @@ import (
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 
+	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
 	"chainguard.dev/go-grpc-kit/pkg/metrics"
+	"chainguard.dev/go-grpc-kit/pkg/options"
 )
 
 // grpcHandlerFunc routes inbound requests to either the passed gRPC server or
@@ -33,6 +35,22 @@ func grpcHandlerFunc(grpcServer *grpc.Server, httpHandler http.Handler) http.Han
 			httpHandler.ServeHTTP(w, r)
 		}
 	}), &http2.Server{})
+}
+
+// allowedHeaders are HTTP headers that should be forwarded as gRPC metadata
+// by the grpc-gateway when converting REST requests to gRPC calls.
+var allowedHeaders = map[string]bool{
+	clientid.CGClientID:  true,
+	clientid.CGRequestID: true,
+}
+
+// incomingHeaderMatcher forwards known custom headers (like cgclientid) from
+// HTTP requests to gRPC metadata, in addition to the default set.
+func incomingHeaderMatcher(key string) (string, bool) {
+	if allowedHeaders[strings.ToLower(key)] {
+		return strings.ToLower(key), true
+	}
+	return runtime.DefaultHeaderMatcher(key)
 }
 
 // Duplex is a wrapper for the gRPC server, gRPC HTTP Gateway MUX and options.
@@ -69,6 +87,15 @@ func New(port int, opts ...interface{}) *Duplex {
 			panic(fmt.Errorf("unknown type: %T", o))
 		}
 	}
+
+	// Include the clientid interceptor on the loopback connection so that
+	// REST-originated requests carry cgclientid metadata. We use
+	// LoopbackDialOptions (not GRPCDialOptions) to avoid double-counting
+	// client metrics and creating noisy self-referential OTEL traces.
+	dOpts = append(options.LoopbackDialOptions(), dOpts...)
+
+	// Always forward cgclientid from HTTP headers to gRPC metadata.
+	mOpts = append(mOpts, runtime.WithIncomingHeaderMatcher(incomingHeaderMatcher))
 
 	// Create the Duplex Server.
 	d := &Duplex{

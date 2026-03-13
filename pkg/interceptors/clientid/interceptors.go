@@ -8,6 +8,7 @@ package clientid
 import (
 	"context"
 	"os"
+	"sync"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
@@ -17,21 +18,27 @@ import (
 const CGClientID = "cgclientid"
 const CGRequestID = "cgrequestid"
 
-func getClientID() string {
+var cachedClientID = sync.OnceValue(func() string {
+	// Prefer K_SERVICE (Cloud Run service name) for descriptive labels.
+	if svc := os.Getenv("K_SERVICE"); svc != "" {
+		return svc
+	}
+	// Prefer CG_CLIENT_ID for explicit override.
+	if id := os.Getenv("CG_CLIENT_ID"); id != "" {
+		return id
+	}
 	e, err := os.Executable()
 	if err != nil {
 		return "unknown"
 	}
 	return e
-}
+})
 
 func appendClientID(ctx context.Context) context.Context {
-	if metadata.ValueFromIncomingContext(ctx, CGClientID) != nil && metadata.ValueFromIncomingContext(ctx, CGRequestID) != nil {
-		// Return original context if it already has chainguard client id and request id.
-		return ctx
-	}
+	// Always set this service's identity on outgoing calls so the
+	// downstream server knows its immediate caller.
 	return metadata.AppendToOutgoingContext(ctx,
-		CGClientID, getClientID(),
+		CGClientID, cachedClientID(),
 		CGRequestID, uuid.New().String(),
 	)
 }

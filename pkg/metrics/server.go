@@ -43,6 +43,9 @@ var (
 					[]float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200, 2400, 3666},
 				),
 			),
+			// Register cgclientid as a custom label so WithLabelsFromContext
+			// values are included in all server metrics.
+			grpc_prometheus.WithContextLabels(clientid.CGClientID),
 		)
 		prometheus.MustRegister(init.serverMetrics)
 
@@ -89,8 +92,7 @@ func SetupTracer(ctx context.Context) func() {
 
 func labelsFromContext(ctx context.Context) prometheus.Labels {
 	cid := "unknown"
-	clientids := metadata.ValueFromIncomingContext(ctx, clientid.CGClientID)
-	if clientids != nil {
+	if clientids := metadata.ValueFromIncomingContext(ctx, clientid.CGClientID); len(clientids) > 0 {
 		cid = clientids[0]
 	}
 	return prometheus.Labels{clientid.CGClientID: cid}

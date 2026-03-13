@@ -19,6 +19,7 @@ import (
 	"time"
 
 	pb "chainguard.dev/go-grpc-kit/pkg/duplex/internal/proto/helloworld"
+	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
 	"chainguard.dev/go-grpc-kit/pkg/metrics"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -47,7 +48,8 @@ func TestMetrics(t *testing.T) {
 		grpc.ChainUnaryInterceptor(metrics.UnaryServerInterceptor()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
-	pb.RegisterGreeterServer(d.Server, &server{})
+	impl := &server{}
+	pb.RegisterGreeterServer(d.Server, impl)
 	if err := d.RegisterHandler(ctx, pb.RegisterGreeterHandlerFromEndpoint); err != nil {
 		t.Fatalf("error registering handler: %v", err)
 	}
@@ -105,6 +107,14 @@ func TestMetrics(t *testing.T) {
 	}
 	b, _ := io.ReadAll(httpResp.Body)
 	t.Log("http response:", string(b))
+
+	// Verify the loopback connection carries cgclientid via the clientid
+	// interceptor that is now included in the duplex dial options.
+	if impl.lastClientID == "" {
+		t.Error("expected cgclientid to be set on HTTP→gRPC loopback request")
+	} else {
+		t.Logf("HTTP loopback cgclientid: %s", impl.lastClientID)
+	}
 
 	// Verify metrics endpoint is available and shows request count
 	metricsURL := fmt.Sprintf("http://%s/metrics", mlis.Addr().String())
@@ -186,11 +196,19 @@ func TestMetrics(t *testing.T) {
 // server is used to implement helloworld.GreeterServer.
 type server struct {
 	pb.UnimplementedGreeterServer
+
+	// lastClientID captures the cgclientid from the most recent request.
+	lastClientID string
 }
 
 // SayHello implements helloworld.GreeterServer
 func (s *server) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
 	md, _ := metadata.FromIncomingContext(ctx)
 	log.Printf("Received: %v (%v)", in.GetName(), md)
+	if vals := md.Get(clientid.CGClientID); len(vals) > 0 {
+		s.lastClientID = vals[0]
+	} else {
+		s.lastClientID = ""
+	}
 	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
 }

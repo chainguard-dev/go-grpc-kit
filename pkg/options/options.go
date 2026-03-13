@@ -131,6 +131,18 @@ func ClientOptions() []option.ClientOption {
 	return cos
 }
 
+// LoopbackDialOptions returns a minimal set of dial options suitable for
+// grpc-gateway loopback connections. It includes the clientid interceptor
+// (so the server sees who originated the REST call) but omits client-side
+// Prometheus metrics, OTEL tracing, and retries which would double-count
+// or create noisy self-referential telemetry.
+func LoopbackDialOptions() []grpc.DialOption {
+	return []grpc.DialOption{
+		grpc.WithChainUnaryInterceptor(clientid.UnaryClientInterceptor()),
+		grpc.WithChainStreamInterceptor(clientid.StreamClientInterceptor()),
+	}
+}
+
 func GRPCDialOptions() []grpc.DialOption {
 	retryOpts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffExponential(100 * time.Millisecond)),
