@@ -26,8 +26,13 @@ func (r *restoreTraceParentHandler) TagRPC(ctx context.Context, _ *stats.RPCTagI
 	if !ok {
 		md = metadata.MD{}
 	}
-	if tp := md.Get(OriginalTraceParentHeader); len(tp) > 0 {
-		md.Set(TraceParentHeader, tp...)
+	if otp := md.Get(OriginalTraceParentHeader); len(otp) > 0 {
+		traceparentRestoreAttempted.Inc()
+		// Only replace if Cloud Run actually changed the traceparent.
+		if current := md.Get(TraceParentHeader); len(current) == 0 || current[0] != otp[0] {
+			traceparentRestored.Inc()
+		}
+		md.Set(TraceParentHeader, otp...)
 	}
 	return metadata.NewIncomingContext(ctx, md)
 }

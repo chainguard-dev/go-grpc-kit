@@ -37,6 +37,7 @@ func (*preserveTraceParentHandler) TagRPC(ctx context.Context, _ *stats.RPCTagIn
 	}
 	if tp := md.Get(TraceParentHeader); len(tp) > 0 {
 		md.Set(OriginalTraceParentHeader, tp...)
+		traceparentPreserved.Inc()
 	}
 	return metadata.NewOutgoingContext(ctx, md)
 }
