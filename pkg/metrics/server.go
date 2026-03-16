@@ -119,7 +119,7 @@ func getServer(enablePprof bool) *http.Server {
 
 	return &http.Server{
 		Handler:           mux,
-		ReadHeaderTimeout: 600 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 }
 

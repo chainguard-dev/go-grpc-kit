@@ -104,18 +104,20 @@ func (d *Duplex) ListenAndServe(_ context.Context) error {
 	server := &http.Server{
 		Addr:              fmt.Sprintf("%s:%d", d.Host, d.Port),
 		Handler:           grpcHandlerFunc(d.Server, d.MUX),
-		ReadHeaderTimeout: 600 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	return server.ListenAndServe()
 }
 
-// ListenAndServe starts both the gRPC server and HTTP Gateway MUX on the given listener.
+// Serve starts both the gRPC server and HTTP Gateway MUX on the given listener.
 // Note: This call is blocking.
-// #nosec G114 -- used only for testing tls.
-// nolint:gosec
 func (d *Duplex) Serve(_ context.Context, listener net.Listener) error {
-	return http.Serve(listener, grpcHandlerFunc(d.Server, d.MUX))
+	server := &http.Server{
+		Handler:           grpcHandlerFunc(d.Server, d.MUX),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	return server.Serve(listener)
 }
 
 // RegisterListenAndServe initializes Prometheus metrics and starts a HTTP
