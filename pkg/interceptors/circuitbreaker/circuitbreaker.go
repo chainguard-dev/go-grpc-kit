@@ -11,6 +11,7 @@ package circuitbreaker
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/sony/gobreaker/v2"
@@ -71,8 +72,7 @@ func UnaryClientInterceptor(cb *gobreaker.CircuitBreaker[any]) grpc.UnaryClientI
 		})
 		if err != nil {
 			// Map gobreaker's sentinel errors to gRPC status codes.
-			switch err {
-			case gobreaker.ErrOpenState, gobreaker.ErrTooManyRequests:
+			if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
 				return status.Errorf(codes.Unavailable,
 					"circuit breaker %s is open: %v", cb.Name(), err)
 			}
@@ -98,8 +98,7 @@ func StreamClientInterceptor(cb *gobreaker.CircuitBreaker[any]) grpc.StreamClien
 			return stream, err
 		})
 		if err != nil {
-			switch err {
-			case gobreaker.ErrOpenState, gobreaker.ErrTooManyRequests:
+			if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
 				return nil, status.Errorf(codes.Unavailable,
 					"circuit breaker %s is open: %v", cb.Name(), err)
 			}
