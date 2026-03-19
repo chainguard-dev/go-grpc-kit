@@ -42,11 +42,11 @@ func TestMetrics(t *testing.T) {
 		t.Fatalf("error resolving IP address: %v", err)
 	}
 
-	// Setup server
+	// Setup server — no explicit WithTransportCredentials dial option here;
+	// LoopbackDialOptions now includes insecure credentials for the loopback.
 	d := New(ip.Port,
 		grpc.ChainStreamInterceptor(metrics.StreamServerInterceptor()),
 		grpc.ChainUnaryInterceptor(metrics.UnaryServerInterceptor()),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	impl := &server{}
 	pb.RegisterGreeterServer(d.Server, impl)
@@ -190,6 +190,59 @@ func TestMetrics(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestHTTPLoopbackWithoutExplicitDialOptions verifies that the HTTP→gRPC
+// loopback works when the caller passes only grpc.ServerOption (no
+// grpc.DialOption). This matches how most production services call New().
+// Regression test for: LoopbackDialOptions must include transport credentials.
+func TestHTTPLoopbackWithoutExplicitDialOptions(t *testing.T) {
+	ctx := context.Background()
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ip, err := net.ResolveTCPAddr(lis.Addr().Network(), lis.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Only grpc.ServerOption — no grpc.DialOption, no WithTransportCredentials.
+	// This is the pattern used by ~49 production services.
+	d := New(ip.Port,
+		grpc.ChainUnaryInterceptor(metrics.UnaryServerInterceptor()),
+	)
+	impl := &server{}
+	pb.RegisterGreeterServer(d.Server, impl)
+	if err := d.RegisterHandler(ctx, pb.RegisterGreeterHandlerFromEndpoint); err != nil {
+		t.Fatalf("RegisterHandler: %v", err)
+	}
+
+	go func() {
+		if err := d.Serve(ctx, lis); err != nil {
+			panic(fmt.Sprintf("Serve: %v", err))
+		}
+	}()
+
+	// HTTP request through the gateway → loopback → gRPC handler.
+	body, _ := json.Marshal(&pb.HelloRequest{Name: "loopback-test"})
+	url := fmt.Sprintf("http://%s/v1/example/echo", lis.Addr().String())
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		t.Fatalf("HTTP POST: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(b))
+	}
+
+	// Verify the request actually reached the gRPC handler.
+	if impl.lastClientID == "" {
+		t.Error("expected cgclientid on loopback request, got empty")
 	}
 }
 
