@@ -138,6 +138,7 @@ func ClientOptions() []option.ClientOption {
 // or create noisy self-referential telemetry.
 func LoopbackDialOptions() []grpc.DialOption {
 	return []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithChainUnaryInterceptor(clientid.UnaryClientInterceptor()),
 		grpc.WithChainStreamInterceptor(clientid.StreamClientInterceptor()),
 	}
