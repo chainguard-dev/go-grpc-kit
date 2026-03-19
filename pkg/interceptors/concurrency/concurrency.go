@@ -12,6 +12,7 @@ package concurrency
 
 import (
 	"context"
+	"sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
@@ -57,7 +58,8 @@ func (l *Limiter) UnaryClientInterceptor() grpc.UnaryClientInterceptor {
 
 // StreamClientInterceptor returns a gRPC stream client interceptor that
 // acquires a concurrency slot before establishing the stream. The slot is
-// held for the lifetime of the stream.
+// released when RecvMsg returns an error (including io.EOF). Callers must
+// drain RecvMsg to completion to avoid leaking slots.
 func (l *Limiter) StreamClientInterceptor() grpc.StreamClientInterceptor {
 	return func(
 		ctx context.Context,
@@ -86,6 +88,9 @@ func (l *Limiter) StreamClientInterceptor() grpc.StreamClientInterceptor {
 
 // InFlight returns the current number of in-flight RPCs.
 // Returns 0 if the limiter is disabled.
+//
+// Note: the value is approximate under contention since len() on a buffered
+// channel is not synchronized with concurrent send/receive operations.
 func (l *Limiter) InFlight() int {
 	if l.sem == nil {
 		return 0
@@ -95,17 +100,20 @@ func (l *Limiter) InFlight() int {
 
 // releasingStream wraps a ClientStream and releases the semaphore slot
 // when the stream receives an error (including io.EOF) from RecvMsg.
+//
+// Callers must drain RecvMsg until it returns an error (typically io.EOF)
+// to release the slot. Abandoning a stream without draining will leak the
+// slot until the process exits.
 type releasingStream struct {
 	grpc.ClientStream
-	sem      chan struct{}
-	released bool
+	sem     chan struct{}
+	release sync.Once
 }
 
 func (s *releasingStream) RecvMsg(m any) error {
 	err := s.ClientStream.RecvMsg(m)
-	if err != nil && !s.released {
-		s.released = true
-		<-s.sem
+	if err != nil {
+		s.release.Do(func() { <-s.sem })
 	}
 	return err
 }

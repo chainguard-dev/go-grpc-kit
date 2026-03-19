@@ -68,28 +68,22 @@ func TestLimiter_LimitsConcurrency(t *testing.T) {
 
 	// Launch 5 concurrent calls with a limit of 2.
 	var wg sync.WaitGroup
-	var maxObserved atomic.Int32
 	for range 5 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			// Sample in-flight count during the call.
-			inflight := int32(limiter.InFlight())
-			for {
-				cur := maxObserved.Load()
-				if inflight <= cur {
-					break
-				}
-				if maxObserved.CompareAndSwap(cur, inflight) {
-					break
-				}
-			}
 			client.Check(context.Background(), &healthpb.HealthCheckRequest{})
 		}()
 	}
-	// Give goroutines time to saturate the limiter.
+	// Give goroutines time to saturate the limiter, then verify the
+	// server-side serving count never exceeds the limit. srv.serving
+	// is incremented inside the server handler, so it reflects actual
+	// concurrent RPCs reaching the server (not just semaphore occupancy).
 	time.Sleep(50 * time.Millisecond)
 
+	if got := srv.serving.Load(); got > 2 {
+		t.Errorf("server serving count = %d, want <= 2", got)
+	}
 	if got := limiter.InFlight(); got > 2 {
 		t.Errorf("InFlight() = %d, want <= 2", got)
 	}
@@ -161,6 +155,62 @@ func TestLimiter_DisabledWithZero(t *testing.T) {
 	}
 	if got := limiter.Capacity(); got != 0 {
 		t.Errorf("Capacity() = %d, want 0 (disabled)", got)
+	}
+}
+
+func TestLimiter_StreamReleasesSlotOnRecvError(t *testing.T) {
+	// The stream interceptor should hold a slot while the stream is alive
+	// and release it when RecvMsg returns an error.
+	srv := &slowServer{delay: 10 * time.Millisecond}
+	addr, stop := startServer(t, srv)
+	defer stop()
+
+	limiter := NewLimiter(1)
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStreamInterceptor(limiter.StreamClientInterceptor()),
+		grpc.WithUnaryInterceptor(limiter.UnaryClientInterceptor()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	client := healthpb.NewHealthClient(conn)
+
+	// Start a Watch stream — this acquires the only slot.
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	stream, err := client.Watch(ctx, &healthpb.HealthCheckRequest{})
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+
+	// Slot should be occupied.
+	if got := limiter.InFlight(); got != 1 {
+		t.Errorf("InFlight() after Watch = %d, want 1", got)
+	}
+
+	// Drain RecvMsg until error (context timeout or server close).
+	for {
+		_, err := stream.Recv()
+		if err != nil {
+			break
+		}
+	}
+
+	// Slot should now be released.
+	if got := limiter.InFlight(); got != 0 {
+		t.Errorf("InFlight() after stream drain = %d, want 0", got)
+	}
+
+	// Verify the slot is actually usable — a unary call should succeed.
+	resp, err := client.Check(context.Background(), &healthpb.HealthCheckRequest{})
+	if err != nil {
+		t.Fatalf("Check after stream release: %v", err)
+	}
+	if resp.Status != healthpb.HealthCheckResponse_SERVING {
+		t.Errorf("got %v, want SERVING", resp.Status)
 	}
 }
 
