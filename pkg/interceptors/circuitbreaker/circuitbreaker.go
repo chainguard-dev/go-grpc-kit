@@ -14,6 +14,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/chainguard-dev/clog"
 	"github.com/sony/gobreaker/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -34,18 +35,23 @@ func DefaultSettings(name string) gobreaker.Settings {
 		Interval:    30 * time.Second,
 		Timeout:     15 * time.Second,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
-			return counts.ConsecutiveFailures > 5
+			return counts.ConsecutiveFailures >= 5
+		},
+		OnStateChange: func(name string, from, to gobreaker.State) {
+			clog.Infof("circuit breaker %s: %s -> %s", name, from, to)
 		},
 		IsSuccessful: func(err error) bool {
 			if err == nil {
 				return true
 			}
 			// Treat client-side errors as successes (the server didn't fail).
+			// Canceled is included because cancellation is typically initiated
+			// by the client (context timeout or user abort), not a server failure.
 			code := status.Code(err)
 			switch code {
 			case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists,
 				codes.PermissionDenied, codes.Unauthenticated, codes.FailedPrecondition,
-				codes.OutOfRange, codes.Unimplemented:
+				codes.OutOfRange, codes.Unimplemented, codes.Canceled:
 				return true
 			default:
 				return false
@@ -84,6 +90,11 @@ func UnaryClientInterceptor(cb *gobreaker.CircuitBreaker[any]) grpc.UnaryClientI
 // StreamClientInterceptor returns a gRPC stream client interceptor that
 // checks the circuit breaker before establishing a stream. When the circuit
 // is open, the stream fails immediately with codes.Unavailable.
+//
+// Note: only stream establishment is tracked by the circuit breaker.
+// Errors on Send/Recv after the stream is established are not tracked,
+// so a downstream that accepts connections but fails on every message
+// will not trip the breaker.
 func StreamClientInterceptor(cb *gobreaker.CircuitBreaker[any]) grpc.StreamClientInterceptor {
 	return func(
 		ctx context.Context,
@@ -104,6 +115,7 @@ func StreamClientInterceptor(cb *gobreaker.CircuitBreaker[any]) grpc.StreamClien
 			}
 			return nil, err
 		}
-		return result.(grpc.ClientStream), nil
+		stream, _ := result.(grpc.ClientStream)
+		return stream, nil
 	}
 }

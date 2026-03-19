@@ -165,6 +165,55 @@ func TestCircuitBreaker_RecoversThroughHalfOpen(t *testing.T) {
 	}
 }
 
+func TestStreamClientInterceptor_TripsAndFailsFast(t *testing.T) {
+	// Server always fails with Internal.
+	addr, stop := startServer(t, &flakyServer{failCode: codes.Internal, failCount: 100})
+	defer stop()
+
+	settings := DefaultSettings("stream-test")
+	settings.ReadyToTrip = func(counts gobreaker.Counts) bool {
+		return counts.ConsecutiveFailures >= 2
+	}
+	cb := gobreaker.NewCircuitBreaker[any](settings)
+
+	// Dial with both unary and stream interceptors.
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(UnaryClientInterceptor(cb)),
+		grpc.WithStreamInterceptor(StreamClientInterceptor(cb)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+
+	client := healthpb.NewHealthClient(conn)
+
+	// Trip the breaker via unary calls (2 failures).
+	for range 2 {
+		_, err := client.Check(context.Background(), &healthpb.HealthCheckRequest{})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	}
+	if cb.State() != gobreaker.StateOpen {
+		t.Fatalf("expected open, got %v", cb.State())
+	}
+
+	// Stream call should fail fast with Unavailable (circuit is open).
+	stream, err := client.Watch(context.Background(), &healthpb.HealthCheckRequest{})
+	if err == nil && stream != nil {
+		// Some gRPC versions defer the error to Recv.
+		_, err = stream.Recv()
+	}
+	if err == nil {
+		t.Fatal("expected circuit open error on stream, got nil")
+	}
+	if got := status.Code(err); got != codes.Unavailable {
+		t.Errorf("expected Unavailable (circuit open) on stream, got %v", got)
+	}
+}
+
 func TestDefaultSettings_IsSuccessful(t *testing.T) {
 	settings := DefaultSettings("test")
 
@@ -181,11 +230,14 @@ func TestDefaultSettings_IsSuccessful(t *testing.T) {
 		{codes.FailedPrecondition, true},
 		{codes.OutOfRange, true},
 		{codes.Unimplemented, true},
+		{codes.Canceled, true},
 		{codes.Internal, false},
 		{codes.Unavailable, false},
 		{codes.DeadlineExceeded, false},
 		{codes.ResourceExhausted, false},
 		{codes.Unknown, false},
+		{codes.Aborted, false},
+		{codes.DataLoss, false},
 	}
 
 	for _, tt := range tests {
