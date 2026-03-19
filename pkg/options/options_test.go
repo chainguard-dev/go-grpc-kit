@@ -103,7 +103,8 @@ func TestGRPCDialOptions_DoesNotRetryInternal(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := grpc.NewServer()
-	healthpb.RegisterHealthServer(srv, &internalErrorServer{})
+	internal := &internalErrorServer{}
+	healthpb.RegisterHealthServer(srv, internal)
 	go srv.Serve(lis)
 	defer srv.Stop()
 
@@ -122,6 +123,9 @@ func TestGRPCDialOptions_DoesNotRetryInternal(t *testing.T) {
 	}
 	if got := status.Code(err); got != codes.Internal {
 		t.Errorf("expected codes.Internal, got %v", got)
+	}
+	if got := internal.calls.Load(); got != 1 {
+		t.Errorf("expected 1 call (no retries for Internal), got %d", got)
 	}
 }
 
