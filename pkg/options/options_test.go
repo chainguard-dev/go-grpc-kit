@@ -61,31 +61,36 @@ func (s *slowServer) Check(ctx context.Context, _ *healthpb.HealthCheckRequest) 
 	}
 }
 
-func TestDefaultDeadlineInterceptor_AppliesTimeout(t *testing.T) {
-	// Server takes 5s to respond. The default timeout is 30s, but we
-	// override to 100ms via env var for this test. The call should fail
-	// with DeadlineExceeded.
+// dialWithDeadlineInterceptor starts a gRPC server with the given delay and
+// returns a health client wired through the deadline interceptor.
+func dialWithDeadlineInterceptor(t *testing.T, serverDelay, interceptorTimeout time.Duration) healthpb.HealthClient {
+	t.Helper()
 	lis, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	srv := grpc.NewServer()
-	healthpb.RegisterHealthServer(srv, &slowServer{delay: 5 * time.Second})
+	healthpb.RegisterHealthServer(srv, &slowServer{delay: serverDelay})
 	go srv.Serve(lis)
-	defer srv.Stop()
+	t.Cleanup(srv.Stop)
 
-	interceptor := defaultDeadlineInterceptor(100 * time.Millisecond)
 	conn, err := grpc.NewClient(lis.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(interceptor),
+		grpc.WithUnaryInterceptor(defaultDeadlineInterceptor(interceptorTimeout)),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	t.Cleanup(func() { conn.Close() })
+	return healthpb.NewHealthClient(conn)
+}
 
-	client := healthpb.NewHealthClient(conn)
-	_, err = client.Check(context.Background(), &healthpb.HealthCheckRequest{})
+func TestDefaultDeadlineInterceptor_AppliesTimeout(t *testing.T) {
+	// Server takes 5s to respond, interceptor timeout is 100ms.
+	// No caller deadline → interceptor applies 100ms → DeadlineExceeded.
+	client := dialWithDeadlineInterceptor(t, 5*time.Second, 100*time.Millisecond)
+
+	_, err := client.Check(context.Background(), &healthpb.HealthCheckRequest{})
 	if err == nil {
 		t.Fatal("expected DeadlineExceeded, got nil")
 	}
@@ -95,33 +100,16 @@ func TestDefaultDeadlineInterceptor_AppliesTimeout(t *testing.T) {
 }
 
 func TestDefaultDeadlineInterceptor_RespectsExistingDeadline(t *testing.T) {
-	// If the caller already set a deadline, the interceptor should not
-	// override it. Use a 5s caller deadline with a 100ms interceptor timeout.
-	// The server responds in 50ms — should succeed because the caller's
-	// 5s deadline governs, not the interceptor's 100ms.
-	lis, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := grpc.NewServer()
-	healthpb.RegisterHealthServer(srv, &slowServer{delay: 50 * time.Millisecond})
-	go srv.Serve(lis)
-	defer srv.Stop()
-
-	interceptor := defaultDeadlineInterceptor(100 * time.Millisecond)
-	conn, err := grpc.NewClient(lis.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(interceptor),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
+	// Server responds in 200ms, interceptor timeout is 100ms, caller
+	// deadline is 5s. If the interceptor incorrectly overwrote the
+	// caller's deadline, the 200ms response would exceed the 100ms
+	// interceptor timeout and fail. Since the caller's deadline governs,
+	// the call succeeds.
+	client := dialWithDeadlineInterceptor(t, 200*time.Millisecond, 100*time.Millisecond)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	client := healthpb.NewHealthClient(conn)
 	resp, err := client.Check(ctx, &healthpb.HealthCheckRequest{})
 	if err != nil {
 		t.Fatalf("expected success with caller deadline, got: %v", err)
@@ -132,28 +120,9 @@ func TestDefaultDeadlineInterceptor_RespectsExistingDeadline(t *testing.T) {
 }
 
 func TestDefaultDeadlineInterceptor_DisabledWithZero(t *testing.T) {
-	// With timeout=0, no deadline is applied. The call should succeed
-	// even though the server takes a moment to respond.
-	lis, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := grpc.NewServer()
-	healthpb.RegisterHealthServer(srv, &slowServer{delay: 50 * time.Millisecond})
-	go srv.Serve(lis)
-	defer srv.Stop()
+	// timeout=0 disables the interceptor. Call succeeds despite no deadline.
+	client := dialWithDeadlineInterceptor(t, 50*time.Millisecond, 0)
 
-	interceptor := defaultDeadlineInterceptor(0)
-	conn, err := grpc.NewClient(lis.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(interceptor),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-
-	client := healthpb.NewHealthClient(conn)
 	resp, err := client.Check(context.Background(), &healthpb.HealthCheckRequest{})
 	if err != nil {
 		t.Fatalf("expected success with disabled timeout, got: %v", err)
