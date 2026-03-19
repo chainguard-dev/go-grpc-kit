@@ -38,7 +38,9 @@ func DefaultSettings(name string) gobreaker.Settings {
 			return counts.ConsecutiveFailures >= 5
 		},
 		OnStateChange: func(name string, from, to gobreaker.State) {
-			clog.Infof("circuit breaker %s: %s -> %s", name, from, to)
+			// OnStateChange is called outside any request context, so use
+			// context.Background() to get the process-level logger.
+			clog.InfoContextf(context.Background(), "circuit breaker %s: %s -> %s", name, from, to)
 		},
 		IsSuccessful: func(err error) bool {
 			if err == nil {
