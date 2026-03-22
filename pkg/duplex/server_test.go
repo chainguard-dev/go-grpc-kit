@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -191,6 +192,113 @@ func TestMetrics(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestGracefulShutdown(t *testing.T) {
+	lis, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	ip, err := net.ResolveTCPAddr(lis.Addr().Network(), lis.Addr().String())
+	if err != nil {
+		t.Fatalf("error resolving: %v", err)
+	}
+
+	// Use a slow server to verify in-flight RPCs are drained.
+	impl := &slowServer{delay: 500 * time.Millisecond}
+	d := New(ip.Port,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	pb.RegisterGreeterServer(d.Server, impl)
+	if err := d.RegisterHandler(context.Background(), pb.RegisterGreeterHandlerFromEndpoint); err != nil {
+		t.Fatalf("error registering handler: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serveDone := make(chan error, 1)
+	go func() {
+		serveDone <- d.Serve(ctx, lis)
+	}()
+
+	// Give server time to start.
+	time.Sleep(100 * time.Millisecond)
+
+	// Start a slow in-flight RPC.
+	conn, err := grpc.NewClient(lis.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+	defer conn.Close()
+	client := pb.NewGreeterClient(conn)
+
+	rpcDone := make(chan error, 1)
+	go func() {
+		_, err := client.SayHello(context.Background(), &pb.HelloRequest{Name: "drain"})
+		rpcDone <- err
+	}()
+
+	// Wait for the RPC to be in-flight, then cancel the server context.
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	// The in-flight RPC should complete successfully (graceful drain).
+	select {
+	case err := <-rpcDone:
+		if err != nil {
+			t.Errorf("in-flight RPC failed during graceful shutdown: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("in-flight RPC did not complete within 5 seconds")
+	}
+
+	if impl.completed.Load() != 1 {
+		t.Errorf("expected 1 completed RPC, got %d", impl.completed.Load())
+	}
+
+	// Serve should return cleanly.
+	select {
+	case err := <-serveDone:
+		if err != nil {
+			t.Errorf("Serve returned error after graceful shutdown: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve did not return within 5 seconds after context cancellation")
+	}
+}
+
+func TestNewInvalidPort(t *testing.T) {
+	tests := []struct {
+		name string
+		port int
+	}{
+		{"negative", -1},
+		{"too large", 70000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("expected panic for port %d", tt.port)
+				}
+			}()
+			New(tt.port)
+		})
+	}
+}
+
+// slowServer delays each RPC to test graceful shutdown drain behavior.
+type slowServer struct {
+	pb.UnimplementedGreeterServer
+	delay     time.Duration
+	completed atomic.Int64
+}
+
+func (s *slowServer) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
+	time.Sleep(s.delay)
+	s.completed.Add(1)
+	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
 }
 
 // server is used to implement helloworld.GreeterServer.
