@@ -214,6 +214,60 @@ func TestLimiter_StreamReleasesSlotOnRecvError(t *testing.T) {
 	}
 }
 
+func TestLimiter_StreamReleasesSlotOnContextCancel(t *testing.T) {
+	// Verify that canceling the stream context releases the slot even
+	// if RecvMsg is never drained — the safety net goroutine should fire.
+	srv := &slowServer{delay: 10 * time.Millisecond}
+	addr, stop := startServer(t, srv)
+	defer stop()
+
+	limiter := NewLimiter(1)
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStreamInterceptor(limiter.StreamClientInterceptor()),
+		grpc.WithUnaryInterceptor(limiter.UnaryClientInterceptor()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	client := healthpb.NewHealthClient(conn)
+
+	// Start a Watch stream — acquires the only slot.
+	ctx, cancel := context.WithCancel(context.Background())
+	_, err = client.Watch(ctx, &healthpb.HealthCheckRequest{})
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+
+	if got := limiter.InFlight(); got != 1 {
+		t.Errorf("InFlight() after Watch = %d, want 1", got)
+	}
+
+	// Cancel the context WITHOUT draining RecvMsg.
+	cancel()
+
+	// The safety net goroutine should release the slot shortly.
+	deadline := time.After(2 * time.Second)
+	for limiter.InFlight() != 0 {
+		select {
+		case <-deadline:
+			t.Fatal("slot was not released within 2 seconds after context cancellation")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	// Verify the slot is reusable — a unary call should succeed.
+	resp, err := client.Check(context.Background(), &healthpb.HealthCheckRequest{})
+	if err != nil {
+		t.Fatalf("Check after context cancel release: %v", err)
+	}
+	if resp.Status != healthpb.HealthCheckResponse_SERVING {
+		t.Errorf("got %v, want SERVING", resp.Status)
+	}
+}
+
 func TestLimiter_Capacity(t *testing.T) {
 	l := NewLimiter(42)
 	if got := l.Capacity(); got != 42 {

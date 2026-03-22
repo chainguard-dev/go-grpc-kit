@@ -79,7 +79,7 @@ func (l *Limiter) StreamClientInterceptor() grpc.StreamClientInterceptor {
 				<-l.sem
 				return nil, err
 			}
-			return &releasingStream{ClientStream: stream, sem: l.sem}, nil
+			return newReleasingStream(stream, l.sem), nil
 		case <-ctx.Done():
 			return nil, status.FromContextError(ctx.Err()).Err()
 		}
@@ -99,15 +99,25 @@ func (l *Limiter) InFlight() int {
 }
 
 // releasingStream wraps a ClientStream and releases the semaphore slot
-// when the stream receives an error (including io.EOF) from RecvMsg.
-//
-// Callers must drain RecvMsg until it returns an error (typically io.EOF)
-// to release the slot. Abandoning a stream without draining will leak the
-// slot until the process exits.
+// when the stream terminates. The slot is released on the first of:
+//   - RecvMsg returns an error (including io.EOF)
+//   - The stream context is canceled (safety net for abandoned streams)
 type releasingStream struct {
 	grpc.ClientStream
 	sem     chan struct{}
 	release sync.Once
+}
+
+func newReleasingStream(stream grpc.ClientStream, sem chan struct{}) *releasingStream {
+	rs := &releasingStream{ClientStream: stream, sem: sem}
+	// Safety net: release the slot if the stream context is canceled
+	// without RecvMsg being drained. This prevents permanent slot leaks
+	// from abandoned streams.
+	go func() {
+		<-stream.Context().Done()
+		rs.release.Do(func() { <-rs.sem })
+	}()
+	return rs
 }
 
 func (s *releasingStream) RecvMsg(m any) error {
