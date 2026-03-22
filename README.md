@@ -1,44 +1,84 @@
 # gRPC Kit
 
-This repository contains helpers working with gRPC.
+Utility library for gRPC in Go — provides duplex serving (gRPC + grpc-gateway),
+Prometheus metrics, OpenTelemetry tracing, client identity propagation, and
+pre-configured dial options.
 
-## gRPC Duplex
+## Packages
 
-For cases where you would like to serve both the gRPC endpoint and a
-[gRPC Gateway](https://grpc-ecosystem.github.io/grpc-gateway/), the
-chainguard.dev/grpc/pkg/duplex package is a helpful wrapper.
+### `pkg/duplex` — Duplex gRPC + REST Gateway Server
 
-First, define the REST endpoints in the `.proto` file. Then change to use the
-duplex object to start and build up the gRPC server. Example:
+Serves both gRPC and [gRPC Gateway](https://grpc-ecosystem.github.io/grpc-gateway/)
+on the same port. Supports graceful shutdown via context cancellation.
 
 ```go
-d := duplex.New(8080)
+d := duplex.New(8080,
+    grpc.ChainUnaryInterceptor(metrics.UnaryServerInterceptor()),
+)
 
-pb.Register<Type>Server(d.Server, impl.New<Type>Server())
-if err := d.RegisterHandler(ctx, impl.Register<Type>ServiceHandlerFromEndpoint); err != nil {
+pb.RegisterTypeServer(d.Server, impl.NewTypeServer())
+if err := d.RegisterHandler(ctx, pb.RegisterTypeHandlerFromEndpoint); err != nil {
     log.Panicf("Failed to register gateway endpoint: %v", err)
 }
-
-...
 
 if err := d.ListenAndServe(ctx); err != nil {
     log.Panicf("ListenAndServe() = %v", err)
 }
 ```
 
-Run this and you should see a message like:
+`duplex.New` accepts `grpc.ServerOption`, `runtime.ServeMuxOption`, and
+`grpc.DialOption` (for the internal loopback connection).
 
-```text
-Duplex gRPC/HTTP server starting at ::8080
-```
+### `pkg/options` — gRPC Client Dial Options
 
-### Options
+Pre-configured gRPC dial options for production use:
 
-You can pass `grpc.ServerOption` and `runtime.NewServeMux` into `duplex.New`.
+- **`GRPCOptions(url)`** — Returns target address and dial options for a URL.
+  Handles `http`, `https`, `bufnet`, and test listener schemes.
+- **`GRPCDialOptions()`** — Standard dial options with OTEL tracing,
+  Prometheus client metrics, client identity propagation, and retry support.
+- **`LoopbackDialOptions()`** — Minimal dial options for grpc-gateway
+  loopback connections, omitting metrics/tracing to avoid double-counting.
+- **`ClientOptions()`** — Wraps `GRPCDialOptions()` as `google.golang.org/api/option.ClientOption`.
 
-For example, if you wanted to make a duplex server with a
-[unary interceptor](https://pkg.go.dev/google.golang.org/grpc#UnaryInterceptor):
+Configuration via environment variables:
 
-```go
-d := duplex.New(port, grpc.UnaryInterceptor(myInterceptorFn))
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_CLIENT_HANDLING_TIME_HISTOGRAM` | `true` | Enable client handling time histogram |
+| `ENABLE_CLIENT_STREAM_RECEIVE_TIME_HISTOGRAM` | `true` | Enable client stream receive histogram |
+| `ENABLE_CLIENT_STREAM_SEND_TIME_HISTOGRAM` | `true` | Enable client stream send histogram |
+| `GRPC_CLIENT_MAX_RETRY` | `0` | Max retries (0 disables) |
+
+### `pkg/metrics` — Prometheus Metrics & OpenTelemetry Tracing
+
+- **`UnaryServerInterceptor()`** / **`StreamServerInterceptor()`** — gRPC
+  server interceptors that record Prometheus metrics with `cgclientid` labels.
+- **`SetupTracer(ctx)`** — Initializes OpenTelemetry tracing with OTLP gRPC
+  exporter. Returns a shutdown function.
+- **`RegisterListenAndServe(server, addr, enablePprof)`** — Starts a metrics
+  HTTP server in the background serving `/metrics` and optionally `/debug/pprof/`.
+
+### `pkg/trace` — Cloud Run Traceparent Preservation
+
+Cloud Run may replace the `traceparent` header, losing span context. This
+package provides stats handlers to work around this:
+
+- **`PreserveTraceParentHandler`** — Client-side handler that copies the
+  outgoing `traceparent` to `original-traceparent`.
+- **`RestoreTraceParentHandler`** — Server-side handler that restores
+  `traceparent` from `original-traceparent` if Cloud Run replaced it.
+
+Prometheus counters for observability:
+`grpc_traceparent_preserved_total`, `grpc_traceparent_restore_attempted_total`,
+`grpc_traceparent_restored_total`.
+
+### `pkg/interceptors/clientid` — Client Identity Propagation
+
+Automatically propagates caller identity via gRPC metadata:
+
+- **`UnaryClientInterceptor()`** / **`StreamClientInterceptor()`** — Adds
+  `cgclientid` (service identity) and `cgrequestid` (unique per-call UUID)
+  to outgoing metadata.
+
+Client ID resolution: `K_SERVICE` env → `CG_CLIENT_ID` env → executable path.

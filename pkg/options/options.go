@@ -121,6 +121,8 @@ var (
 	SendMsgSize = 100 * 1024 * 1024 // 100MB
 )
 
+// ClientOptions wraps GRPCDialOptions as google.golang.org/api/option.ClientOption
+// for use with Google API clients.
 func ClientOptions() []option.ClientOption {
 	do := GRPCDialOptions()
 	cos := make([]option.ClientOption, 0, len(do))
@@ -143,6 +145,9 @@ func LoopbackDialOptions() []grpc.DialOption {
 	}
 }
 
+// GRPCDialOptions returns the standard set of gRPC dial options for production
+// use, including OTEL tracing, Prometheus client metrics, client identity
+// propagation, and retry support.
 func GRPCDialOptions() []grpc.DialOption {
 	retryOpts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffExponential(100 * time.Millisecond)),
@@ -165,6 +170,8 @@ func grpcCallOptions() []grpc.CallOption {
 	}
 }
 
+// GRPCOptions returns a target address and dial options appropriate for the
+// given URL scheme (http, https, bufnet, or registered test listeners).
 func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 	switch delegate.Scheme {
 	case "http":
