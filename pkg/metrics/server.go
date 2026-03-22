@@ -151,12 +151,16 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 	}()
 }
 
+// UnaryServerInterceptor returns a gRPC unary server interceptor that records
+// Prometheus metrics with cgclientid labels from request metadata.
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	return state().serverMetrics.UnaryServerInterceptor(
 		grpc_prometheus.WithLabelsFromContext(labelsFromContext),
 	)
 }
 
+// StreamServerInterceptor returns a gRPC stream server interceptor that records
+// Prometheus metrics with cgclientid labels from request metadata.
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
 	return state().serverMetrics.StreamServerInterceptor(
 		grpc_prometheus.WithLabelsFromContext(labelsFromContext),
