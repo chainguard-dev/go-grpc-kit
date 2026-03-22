@@ -83,7 +83,7 @@ func TestTLS(t *testing.T) {
 		grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "hunter2"})}),
 	)
 	if err != nil {
-		log.Fatalf("failed to dial: %v", err)
+		t.Fatalf("failed to dial: %v", err)
 	}
 	client := pb.NewGreeterClient(conn)
 	req := &pb.HelloRequest{
