@@ -33,10 +33,11 @@ import (
 )
 
 type envStruct struct {
-	EnableClientHandlingTimeHistogram      bool `envconfig:"ENABLE_CLIENT_HANDLING_TIME_HISTOGRAM" default:"true"`
-	EnableClientStreamReceiveTimeHistogram bool `envconfig:"ENABLE_CLIENT_STREAM_RECEIVE_TIME_HISTOGRAM" default:"true"`
-	EnableClientStreamSendTimeHistogram    bool `envconfig:"ENABLE_CLIENT_STREAM_SEND_TIME_HISTOGRAM" default:"true"`
-	GrpcClientMaxRetry                     uint `envconfig:"GRPC_CLIENT_MAX_RETRY" default:"0"`
+	EnableClientHandlingTimeHistogram      bool          `envconfig:"ENABLE_CLIENT_HANDLING_TIME_HISTOGRAM" default:"true"`
+	EnableClientStreamReceiveTimeHistogram bool          `envconfig:"ENABLE_CLIENT_STREAM_RECEIVE_TIME_HISTOGRAM" default:"true"`
+	EnableClientStreamSendTimeHistogram    bool          `envconfig:"ENABLE_CLIENT_STREAM_SEND_TIME_HISTOGRAM" default:"true"`
+	GrpcClientMaxRetry                     uint          `envconfig:"GRPC_CLIENT_MAX_RETRY" default:"0"`
+	GrpcClientDefaultTimeout               time.Duration `envconfig:"GRPC_CLIENT_DEFAULT_TIMEOUT" default:"30s"`
 }
 
 type initStuff struct {
@@ -152,8 +153,24 @@ func GRPCDialOptions() []grpc.DialOption {
 	return []grpc.DialOption{
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
-		grpc.WithChainUnaryInterceptor(clientid.UnaryClientInterceptor(), state().clientMetrics.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
+		grpc.WithChainUnaryInterceptor(defaultDeadlineInterceptor(state().env.GrpcClientDefaultTimeout), clientid.UnaryClientInterceptor(), state().clientMetrics.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
 		grpc.WithChainStreamInterceptor(clientid.StreamClientInterceptor(), state().clientMetrics.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
+	}
+}
+
+// defaultDeadlineInterceptor returns a unary client interceptor that sets a
+// default deadline on calls that don't already have one. This prevents
+// WaitForReady(true) from blocking indefinitely when a downstream is
+// unavailable, which would tie up goroutines until the Cloud Run concurrency
+// limit is exhausted.
+func defaultDeadlineInterceptor(timeout time.Duration) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if _, ok := ctx.Deadline(); !ok && timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 }
 
