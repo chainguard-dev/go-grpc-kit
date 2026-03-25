@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -36,7 +37,7 @@ type envStruct struct {
 	EnableClientHandlingTimeHistogram      bool `envconfig:"ENABLE_CLIENT_HANDLING_TIME_HISTOGRAM" default:"true"`
 	EnableClientStreamReceiveTimeHistogram bool `envconfig:"ENABLE_CLIENT_STREAM_RECEIVE_TIME_HISTOGRAM" default:"true"`
 	EnableClientStreamSendTimeHistogram    bool `envconfig:"ENABLE_CLIENT_STREAM_SEND_TIME_HISTOGRAM" default:"true"`
-	GrpcClientMaxRetry                     uint `envconfig:"GRPC_CLIENT_MAX_RETRY" default:"0"`
+	GrpcClientMaxRetry                     uint `envconfig:"GRPC_CLIENT_MAX_RETRY" default:"2"`
 }
 
 type initStuff struct {
@@ -145,8 +146,13 @@ func LoopbackDialOptions() []grpc.DialOption {
 
 func GRPCDialOptions() []grpc.DialOption {
 	retryOpts := []grpc_retry.CallOption{
-		grpc_retry.WithBackoff(grpc_retry.BackoffExponential(100 * time.Millisecond)),
+		grpc_retry.WithBackoff(grpc_retry.BackoffExponentialWithJitter(100*time.Millisecond, 0.2)),
 		grpc_retry.WithMax(state().env.GrpcClientMaxRetry),
+		// Only retry Unavailable by default (request never reached the server).
+		// codes.Internal is not retried because the request may have been
+		// partially processed. Per-client overrides can add codes.Internal
+		// for idempotent-safe services.
+		grpc_retry.WithCodes(codes.Unavailable),
 	}
 
 	return []grpc.DialOption{
