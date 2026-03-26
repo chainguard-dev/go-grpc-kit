@@ -7,6 +7,7 @@ package duplex
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -69,6 +70,9 @@ type RegisterHandlerFromEndpointFn func(ctx context.Context, mux *runtime.ServeM
 // for `grpc.NewServer`, typed `grpc.ServerOption`, and `runtime.NewServeMux`,
 // typed `runtime.ServeMuxOption`. Unknown opts will cause a panic.
 func New(port int, opts ...interface{}) *Duplex {
+	if port < 0 || port > 65535 {
+		panic(fmt.Sprintf("invalid port: %d", port))
+	}
 	// Split out the options into their types.
 	var (
 		gOpts []grpc.ServerOption
@@ -126,25 +130,70 @@ func (d *Duplex) RegisterHandler(ctx context.Context, fn RegisterHandlerFromEndp
 }
 
 // ListenAndServe starts both the gRPC server and HTTP Gateway MUX.
+// When the context is canceled, it gracefully stops the gRPC server and
+// shuts down the HTTP server, allowing in-flight requests to complete.
 // Note: This call is blocking.
-func (d *Duplex) ListenAndServe(_ context.Context) error {
+func (d *Duplex) ListenAndServe(ctx context.Context) error {
 	server := &http.Server{
 		Addr:              fmt.Sprintf("%s:%d", d.Host, d.Port),
 		Handler:           grpcHandlerFunc(d.Server, d.MUX),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	return server.ListenAndServe()
+	return d.serveAndWait(ctx, server, func() error {
+		return server.ListenAndServe()
+	})
 }
 
 // Serve starts both the gRPC server and HTTP Gateway MUX on the given listener.
+// When the context is canceled, it gracefully stops the gRPC server and
+// shuts down the HTTP server, allowing in-flight requests to complete.
 // Note: This call is blocking.
-func (d *Duplex) Serve(_ context.Context, listener net.Listener) error {
+func (d *Duplex) Serve(ctx context.Context, listener net.Listener) error {
 	server := &http.Server{
 		Handler:           grpcHandlerFunc(d.Server, d.MUX),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	return server.Serve(listener)
+
+	return d.serveAndWait(ctx, server, func() error {
+		return server.Serve(listener)
+	})
+}
+
+const shutdownTimeout = 30 * time.Second
+
+// serveAndWait runs serveFn in a goroutine and waits for either it to return
+// or for the context to be canceled, triggering graceful shutdown.
+//
+// The duplex server runs gRPC via grpcHandlerFunc on an http.Server, so
+// shutdown is driven by http.Server.Shutdown which gracefully drains both
+// REST and gRPC-over-HTTP connections. grpc.Server.GracefulStop is NOT
+// called because the serverHandlerTransport used in this mode does not
+// support Drain().
+func (d *Duplex) serveAndWait(ctx context.Context, server *http.Server, serveFn func() error) error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- serveFn()
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		// Gracefully shut down the HTTP server, allowing in-flight
+		// requests (both REST and gRPC-over-HTTP) to complete.
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("http shutdown: %w", err)
+		}
+
+		// Drain the serve error — http.ErrServerClosed is expected.
+		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	}
 }
 
 // RegisterListenAndServe initializes Prometheus metrics and starts a HTTP
