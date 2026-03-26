@@ -103,26 +103,44 @@ func getServer(enablePprof bool) *http.Server {
 	mux.Handle("/metrics", promhttp.Handler())
 
 	if enablePprof {
-		// pprof handles
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-		mux.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
-		mux.Handle("/debug/pprof/block", pprof.Handler("block"))
-		mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-		mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-		mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
-		mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+		// pprof handles — restricted to loopback IPs only to prevent
+		// remote access to profiling data (goroutine stacks, heap, etc.).
+		mux.Handle("/debug/pprof/", localhostOnly(http.HandlerFunc(pprof.Index)))
+		mux.Handle("/debug/pprof/cmdline", localhostOnly(http.HandlerFunc(pprof.Cmdline)))
+		mux.Handle("/debug/pprof/profile", localhostOnly(http.HandlerFunc(pprof.Profile)))
+		mux.Handle("/debug/pprof/symbol", localhostOnly(http.HandlerFunc(pprof.Symbol)))
+		mux.Handle("/debug/pprof/trace", localhostOnly(http.HandlerFunc(pprof.Trace)))
+		mux.Handle("/debug/pprof/allocs", localhostOnly(pprof.Handler("allocs")))
+		mux.Handle("/debug/pprof/block", localhostOnly(pprof.Handler("block")))
+		mux.Handle("/debug/pprof/goroutine", localhostOnly(pprof.Handler("goroutine")))
+		mux.Handle("/debug/pprof/heap", localhostOnly(pprof.Handler("heap")))
+		mux.Handle("/debug/pprof/mutex", localhostOnly(pprof.Handler("mutex")))
+		mux.Handle("/debug/pprof/threadcreate", localhostOnly(pprof.Handler("threadcreate")))
 
-		log.Println("registering handle for /debug/pprof")
+		log.Println("registering handle for /debug/pprof (localhost-only)")
 	}
 
 	return &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+}
+
+// localhostOnly wraps an http.Handler to reject requests from non-loopback IPs.
+func localhostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		ip := net.ParseIP(host)
+		if ip == nil || !ip.IsLoopback() {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Used ONLY for testing
