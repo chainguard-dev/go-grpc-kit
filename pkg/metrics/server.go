@@ -7,7 +7,6 @@ package metrics
 
 import (
 	"context"
-	"log"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -100,7 +99,18 @@ func labelsFromContext(ctx context.Context) prometheus.Labels {
 
 func getServer(enablePprof bool) *http.Server {
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/metrics", promhttp.HandlerFor(
+		prometheus.DefaultGatherer,
+		promhttp.HandlerOpts{
+			// ContinueOnError returns partial metrics and logs the error
+			// instead of returning HTTP 500. This is necessary because the
+			// OTel prometheus exporter can produce metrics that fail
+			// collection (e.g. "no value, sum, or explicit bounds"),
+			// which would otherwise cause the scraper to get 500s and
+			// lose all metrics data.
+			ErrorHandling: promhttp.ContinueOnError,
+		},
+	))
 
 	if enablePprof {
 		// pprof handles
@@ -116,7 +126,7 @@ func getServer(enablePprof bool) *http.Server {
 		mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
 		mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 
-		log.Println("registering handle for /debug/pprof")
+		clog.Infof("registering handle for /debug/pprof")
 	}
 
 	return &http.Server{
@@ -133,7 +143,7 @@ func RegisterAndServe(server *grpc.Server, listener net.Listener, enablePprof bo
 		s := getServer(enablePprof)
 
 		if err := s.Serve(listener); err != nil {
-			log.Fatalf("serve for http /metrics = %v", err)
+			clog.Fatalf("serve for http /metrics = %v", err)
 		}
 	}()
 }
@@ -146,7 +156,7 @@ func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof 
 		s.Addr = listenAddr
 
 		if err := s.ListenAndServe(); err != nil {
-			log.Fatalf("listen and serve for http /metrics = %v", err)
+			clog.Fatalf("listen and serve for http /metrics = %v", err)
 		}
 	}()
 }
