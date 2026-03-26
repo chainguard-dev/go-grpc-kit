@@ -7,7 +7,7 @@ package metrics
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -53,20 +53,22 @@ var (
 	})
 )
 
-// Fractions >= 1 will always sample. Fractions < 0 are treated as zero. To
-// respect the parent trace's `SampledFlag`, the `TraceIDRatioBased` sampler
-// should be used as a delegate of a `Parent` sampler.
+// SetupTracer initializes OpenTelemetry tracing with an OTLP gRPC exporter.
+// It returns a shutdown function and an error.
 //
 // Expected usage:
 //
-//	defer metrics.SetupTracer(ctx)()
-func SetupTracer(ctx context.Context) func() {
+//	shutdownTracer, err := metrics.SetupTracer(ctx)
+//	if err != nil {
+//		log.Fatalf("SetupTracer() = %v", err)
+//	}
+//	defer shutdownTracer()
+func SetupTracer(ctx context.Context) (func(), error) {
 	logger := clog.FromContext(ctx)
 
 	traceExporter, err := otlptracegrpc.New(ctx)
 	if err != nil {
-		logger.Errorf("SetupTracer() = %v", err)
-		panic(err)
+		return nil, fmt.Errorf("creating trace exporter: %w", err)
 	}
 	bsp := trace.NewBatchSpanProcessor(traceExporter)
 	res := resource.Default()
@@ -87,7 +89,7 @@ func SetupTracer(ctx context.Context) func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
 			logger.Infof("Error shutting down tracer provider: %v", err)
 		}
-	}
+	}, nil
 }
 
 func labelsFromContext(ctx context.Context) prometheus.Labels {
@@ -116,7 +118,7 @@ func getServer(enablePprof bool) *http.Server {
 		mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
 		mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 
-		log.Println("registering handle for /debug/pprof")
+		clog.Infof("registering handle for /debug/pprof")
 	}
 
 	return &http.Server{
@@ -125,28 +127,31 @@ func getServer(enablePprof bool) *http.Server {
 	}
 }
 
-// Used ONLY for testing
+// RegisterAndServe initializes Prometheus metrics for the given gRPC server
+// and starts an HTTP server in the background on the given listener.
+// This is intended for testing only.
 func RegisterAndServe(server *grpc.Server, listener net.Listener, enablePprof bool) {
 	state().serverMetrics.InitializeMetrics(server)
 
 	go func() {
 		s := getServer(enablePprof)
-
-		if err := s.Serve(listener); err != nil {
-			log.Fatalf("serve for http /metrics = %v", err)
+		if err := s.Serve(listener); err != nil && err != http.ErrServerClosed {
+			clog.Fatalf("serve for http /metrics = %v", err)
 		}
 	}()
 }
 
+// RegisterListenAndServe initializes Prometheus metrics for the given gRPC
+// server and starts an HTTP server in the background at listenAddr serving
+// /metrics (and optionally /debug/pprof/ endpoints).
 func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
 	state().serverMetrics.InitializeMetrics(server)
 
 	go func() {
 		s := getServer(enablePprof)
 		s.Addr = listenAddr
-
-		if err := s.ListenAndServe(); err != nil {
-			log.Fatalf("listen and serve for http /metrics = %v", err)
+		if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			clog.Fatalf("listen and serve for http /metrics = %v", err)
 		}
 	}()
 }
