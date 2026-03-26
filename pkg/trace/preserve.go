@@ -42,7 +42,7 @@ func (*preserveTraceParentHandler) TagRPC(ctx context.Context, _ *stats.RPCTagIn
 	return metadata.NewOutgoingContext(ctx, md)
 }
 
-// HandleRPC implments stats.Handler interface.
+// HandleRPC implements stats.Handler interface.
 func (*preserveTraceParentHandler) HandleRPC(context.Context, stats.RPCStats) {
 	// Do nothing
 }
