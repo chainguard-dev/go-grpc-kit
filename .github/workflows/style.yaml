@@ -128,7 +128,7 @@ jobs:
           github_token: ${{ secrets.github_token }}
           fail_level: warning
 
-      - uses: step-security/action-misspell@185febccfc9a0598c17a34b579cc7e64a54afc6d # v1.27.1
+      - uses: step-security/action-misspell@85d31a4bcbf1c3d99e4f224c148330e45b5a63cf # v1.27.2
         if: ${{ always() }}
         with:
           github_token: ${{ secrets.github_token }}
