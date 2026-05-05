@@ -122,7 +122,7 @@ jobs:
       - uses: chainguard-dev/actions/eof-newline@c69a264ec2a5934c3186c618f368fc1c86f16cff # v1.6.19
         if: ${{ always() }}
 
-      - uses: step-security/action-tflint@15c8d1fff9c8c2f40157254897d99ef4bb0c5e5d # v1.24.2
+      - uses: step-security/action-tflint@285fe25934512644274b253b424a5d4b8f1c2dc5 # v1.25.0
         if: ${{ always() }}
         with:
           github_token: ${{ secrets.github_token }}
