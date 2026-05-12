@@ -139,7 +139,7 @@ jobs:
             **/third_party/**
             ./*.yml
 
-      - uses: step-security/woke-action-reviewdog@950b04a91ab83c38de67275fe6190a4eb977f261 # v0.1.1
+      - uses: step-security/woke-action-reviewdog@5db6c18a75242300a37ae6ffe92d03b4da1b5ae8 # v0.1.2
         if: ${{ always() }}
         with:
           github-token: ${{ secrets.github_token }}
