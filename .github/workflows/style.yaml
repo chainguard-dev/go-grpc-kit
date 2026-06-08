@@ -37,7 +37,7 @@ jobs:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: chainguard-dev/actions/gofmt@c69a264ec2a5934c3186c618f368fc1c86f16cff # v1.6.19
+      - uses: chainguard-dev/actions/gofmt@3b7bbeebc3a5d2bc37aa008350202651c32a26e1 # v1.6.22
         with:
           args: -s
 
@@ -63,7 +63,7 @@ jobs:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: chainguard-dev/actions/goimports@c69a264ec2a5934c3186c618f368fc1c86f16cff # v1.6.19
+      - uses: chainguard-dev/actions/goimports@3b7bbeebc3a5d2bc37aa008350202651c32a26e1 # v1.6.22
 
   golangci-lint:
     name: golangci-lint
@@ -116,10 +116,10 @@ jobs:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: chainguard-dev/actions/trailing-space@c69a264ec2a5934c3186c618f368fc1c86f16cff # v1.6.19
+      - uses: chainguard-dev/actions/trailing-space@3b7bbeebc3a5d2bc37aa008350202651c32a26e1 # v1.6.22
         if: ${{ always() }}
 
-      - uses: chainguard-dev/actions/eof-newline@c69a264ec2a5934c3186c618f368fc1c86f16cff # v1.6.19
+      - uses: chainguard-dev/actions/eof-newline@3b7bbeebc3a5d2bc37aa008350202651c32a26e1 # v1.6.22
         if: ${{ always() }}
 
       - uses: step-security/action-tflint@285fe25934512644274b253b424a5d4b8f1c2dc5 # v1.25.0
