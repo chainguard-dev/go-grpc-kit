@@ -135,6 +135,12 @@ func TestClientOptions_ReturnsNonEmpty(t *testing.T) {
 	}
 }
 
+func TestKeepaliveDialOption(t *testing.T) {
+	if KeepaliveDialOption() == nil {
+		t.Error("expected a non-nil keepalive dial option")
+	}
+}
+
 type testDialableListener struct {
 	net.Listener
 }

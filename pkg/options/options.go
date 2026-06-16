@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
 	"chainguard.dev/go-grpc-kit/pkg/trace"
@@ -120,6 +121,32 @@ var (
 	RecvMsgSize = 100 * 1024 * 1024 // 100MB
 	SendMsgSize = 100 * 1024 * 1024 // 100MB
 )
+
+const (
+	// keepaliveTime is how long a connection may be idle before the client
+	// pings it, so a black-holed connection is noticed between RPCs.
+	keepaliveTime = 30 * time.Second
+
+	// keepaliveTimeout is how long the client waits for a ping ack before it
+	// closes the connection and reconnects.
+	keepaliveTimeout = 20 * time.Second
+)
+
+// KeepaliveDialOption returns a dial option that pings an idle connection, so a
+// transport that has silently stopped passing traffic is closed and redialled
+// rather than holding the next RPC open until it times out. It pings even with
+// no active RPCs (PermitWithoutStream), so the server must be configured with a
+// matching keepalive.EnforcementPolicy (MinTime no greater than the ping
+// interval, and PermitWithoutStream true). A server using gRPC's defaults
+// rejects these pings with a GOAWAY, which is why this is offered as an opt-in
+// option rather than folded into GRPCDialOptions.
+func KeepaliveDialOption() grpc.DialOption {
+	return grpc.WithKeepaliveParams(keepalive.ClientParameters{
+		Time:                keepaliveTime,
+		Timeout:             keepaliveTimeout,
+		PermitWithoutStream: true,
+	})
+}
 
 // ClientOptions wraps GRPCDialOptions as google.golang.org/api/option.ClientOption
 // for use with Google API clients.
