@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -130,6 +131,10 @@ const (
 	// keepaliveTimeout is how long the client waits for a ping ack before it
 	// closes the connection and reconnects.
 	keepaliveTimeout = 20 * time.Second
+
+	// dialReadyTimeout is the default deadline DialReady waits for a transport
+	// to reach a ready state.
+	dialReadyTimeout = 30 * time.Second
 )
 
 // KeepaliveDialOption returns a dial option that pings an idle connection, so a
@@ -245,6 +250,42 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 				return listener.Dial()
 			}),
+		}
+	}
+}
+
+// DialReady opens a gRPC client connection to the target described by delegate
+// and blocks until its transport reaches a ready state, within timeout. A
+// timeout of zero applies the default deadline. The dial options for the
+// target's scheme (from GRPCOptions) are applied first, then opts. A target
+// that cannot be reached fails here rather than hanging the first RPC; the
+// returned connection is closed on failure.
+func DialReady(ctx context.Context, delegate url.URL, timeout time.Duration, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+	if timeout <= 0 {
+		timeout = dialReadyTimeout
+	}
+
+	target, dialOpts := GRPCOptions(delegate)
+
+	conn, err := grpc.NewClient(target, append(dialOpts, opts...)...)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.Connect()
+
+	deadline, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	for {
+		state := conn.GetState()
+		if state == connectivity.Ready {
+			return conn, nil
+		}
+
+		if !conn.WaitForStateChange(deadline, state) {
+			conn.Close()
+			return nil, fmt.Errorf("connect to %s: not ready within %s (last state %q): %w", target, timeout, state, deadline.Err())
 		}
 	}
 }
