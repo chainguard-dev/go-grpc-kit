@@ -34,7 +34,7 @@ if err := d.ListenAndServe(ctx); err != nil {
 Pre-configured gRPC dial options for production use:
 
 - **`GRPCOptions(url)`** — Returns target address and dial options for a URL.
-  Handles `http`, `https`, `bufnet`, and test listener schemes.
+  Handles `http`, `https`, `unix`, `bufnet`, and test listener schemes.
 - **`GRPCDialOptions()`** — Standard dial options with OTEL tracing,
   Prometheus client metrics, client identity propagation, and retry support.
 - **`LoopbackDialOptions()`** — Minimal dial options for grpc-gateway

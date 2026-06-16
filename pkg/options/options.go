@@ -172,7 +172,7 @@ func grpcCallOptions() []grpc.CallOption {
 }
 
 // GRPCOptions returns a target address and dial options appropriate for the
-// given URL scheme (http, https, bufnet, or registered test listeners).
+// given URL scheme (http, https, unix, bufnet, or registered test listeners).
 func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 	switch delegate.Scheme {
 	case "http":
@@ -196,6 +196,13 @@ func GRPCOptions(delegate url.URL) (string, []grpc.DialOption) {
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				MinVersion: tls.VersionTLS12,
 			})),
+			grpc.WithDefaultCallOptions(
+				grpcCallOptions()...,
+			)}...)
+
+	case "unix": // Local Unix domain socket, e.g. unix:///path/to/sock.
+		return delegate.String(), append(GRPCDialOptions(), []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithDefaultCallOptions(
 				grpcCallOptions()...,
 			)}...)

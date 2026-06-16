@@ -83,6 +83,45 @@ func TestGRPCOptions_HTTPSWithPort(t *testing.T) {
 	}
 }
 
+func TestGRPCOptions_Unix(t *testing.T) {
+	// The gRPC unix resolver requires an empty authority and reads the socket
+	// from the path (or opaque) component, so exercise each of the forms it
+	// accepts and confirm the returned target round-trips to an empty host.
+	cases := []struct {
+		name   string
+		target string
+	}{
+		{"absolute with authority", "unix:///tmp/example.sock"},
+		{"absolute without authority", "unix:/tmp/example.sock"},
+		{"relative opaque", "unix:example.sock"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			u, err := url.Parse(tc.target)
+			if err != nil {
+				t.Fatalf("parse %q: %v", tc.target, err)
+			}
+
+			addr, opts := GRPCOptions(*u)
+			if addr != tc.target {
+				t.Errorf("addr = %q, want %q", addr, tc.target)
+			}
+			if len(opts) == 0 {
+				t.Error("expected non-empty dial options")
+			}
+
+			parsed, err := url.Parse(addr)
+			if err != nil {
+				t.Fatalf("re-parse %q: %v", addr, err)
+			}
+			if parsed.Host != "" {
+				t.Errorf("target host = %q, want empty so the unix resolver accepts it", parsed.Host)
+			}
+		})
+	}
+}
+
 func TestGRPCOptions_TestListener(t *testing.T) {
 	lis, err := net.Listen("tcp", ":0")
 	if err != nil {
