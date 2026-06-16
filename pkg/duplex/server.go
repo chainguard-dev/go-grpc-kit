@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -23,17 +24,25 @@ import (
 	"chainguard.dev/go-grpc-kit/pkg/options"
 )
 
-// grpcHandlerFunc routes inbound requests to either the passed gRPC server or
-// the http handler based on the request content type.
+// handler routes inbound requests to either the gRPC server or the gateway MUX
+// based on the request content type, served over h2c so gRPC works on a
+// cleartext port. Each request is counted while it runs, so Shutdown can wait
+// for in-flight requests to finish: the gRPC requests are served over hijacked
+// h2c connections that http.Server.Shutdown does not track, so counting them
+// here is the only way to know when they have drained.
 // See also, https://grpc-ecosystem.github.io/grpc-gateway/
 // This is based on: https://github.com/philips/grpc-gateway-example/issues/22#issuecomment-490733965
-func grpcHandlerFunc(grpcServer *grpc.Server, httpHandler http.Handler) http.Handler {
+func (d *Duplex) handler() http.Handler {
 	return h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		d.inflight.add()
+		defer d.inflight.done()
+
 		if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
-			grpcServer.ServeHTTP(w, r)
-		} else {
-			httpHandler.ServeHTTP(w, r)
+			d.Server.ServeHTTP(w, r)
+			return
 		}
+
+		d.MUX.ServeHTTP(w, r)
 	}), &http2.Server{})
 }
 
@@ -61,6 +70,13 @@ type Duplex struct {
 	Host        string
 	Port        int
 	DialOptions []grpc.DialOption
+
+	httpServerOnce sync.Once
+	httpServer     *http.Server
+
+	// inflight counts requests currently being served, so Shutdown can wait for
+	// them to finish.
+	inflight inflightTracker
 }
 
 type RegisterHandlerFromEndpointFn func(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) error
@@ -126,25 +142,67 @@ func (d *Duplex) RegisterHandler(ctx context.Context, fn RegisterHandlerFromEndp
 }
 
 // ListenAndServe starts both the gRPC server and HTTP Gateway MUX.
-// Note: This call is blocking.
+// Note: This call is blocking. It returns http.ErrServerClosed after Shutdown.
 func (d *Duplex) ListenAndServe(_ context.Context) error {
-	server := &http.Server{
-		Addr:              fmt.Sprintf("%s:%d", d.Host, d.Port),
-		Handler:           grpcHandlerFunc(d.Server, d.MUX),
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	server := d.httpServerInstance()
+	server.Addr = fmt.Sprintf("%s:%d", d.Host, d.Port)
 
 	return server.ListenAndServe()
 }
 
 // Serve starts both the gRPC server and HTTP Gateway MUX on the given listener.
-// Note: This call is blocking.
+// Note: This call is blocking. It returns http.ErrServerClosed after Shutdown.
 func (d *Duplex) Serve(_ context.Context, listener net.Listener) error {
-	server := &http.Server{
-		Handler:           grpcHandlerFunc(d.Server, d.MUX),
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-	return server.Serve(listener)
+	return d.httpServerInstance().Serve(listener)
+}
+
+// httpServerInstance returns the underlying http.Server, constructing it on
+// first use.
+func (d *Duplex) httpServerInstance() *http.Server {
+	d.httpServerOnce.Do(func() {
+		d.httpServer = &http.Server{
+			Handler:           d.handler(),
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+	})
+
+	return d.httpServer
+}
+
+// Shutdown gracefully stops the duplex. It stops accepting new connections and
+// waits for in-flight requests to finish, bounded by ctx; if ctx is done before
+// they drain it stops waiting and returns ctx.Err(). After Shutdown returns, the
+// blocking ListenAndServe or Serve call returns http.ErrServerClosed.
+//
+// The wait is bounded only by ctx, mirroring http.Server.Shutdown: pass a
+// context with a deadline to cap it, or a long-lived request will hold shutdown
+// open indefinitely.
+//
+// gRPC is served over h2c, whose connections http.Server.Shutdown does not
+// track once hijacked, so its return does not imply gRPC has drained; and
+// grpc.Server.GracefulStop panics on a ServeHTTP-backed transport, so it cannot
+// drain them either. Shutdown therefore stops the listeners via the HTTP
+// server, waits on its own in-flight counter for requests of both kinds to
+// finish, then stops the gRPC server with grpc.Server.Stop and closes the HTTP
+// server. Those final steps run on every path: after a clean drain they release
+// the now-idle server; if the wait ended on ctx they also close transports that
+// are still open.
+func (d *Duplex) Shutdown(ctx context.Context) error {
+	server := d.httpServerInstance()
+
+	// Stop accepting new connections and drain the gateway's tracked
+	// connections. This does not wait for hijacked h2c (gRPC) connections, so
+	// run it in the background while the in-flight counter is drained below. Its
+	// error is dropped deliberately: the wait below reports the drain outcome,
+	// and the Close below is the backstop.
+	go func() { _ = server.Shutdown(ctx) }()
+
+	err := d.inflight.wait(ctx)
+
+	d.Server.Stop()
+	_ = server.Close()
+
+	return err
 }
 
 // RegisterListenAndServe initializes Prometheus metrics and starts a HTTP

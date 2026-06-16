@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -244,6 +245,180 @@ func TestHTTPLoopbackWithoutExplicitDialOptions(t *testing.T) {
 	if impl.lastClientID == "" {
 		t.Error("expected cgclientid on loopback request, got empty")
 	}
+}
+
+// TestShutdown verifies that Shutdown drains the duplex and unblocks the
+// serving goroutine: a request succeeds before shutdown, Shutdown returns
+// cleanly, and Serve then returns http.ErrServerClosed.
+func TestShutdown(t *testing.T) {
+	ctx := t.Context()
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	d := New(0, grpc.ChainUnaryInterceptor(metrics.UnaryServerInterceptor()))
+	pb.RegisterGreeterServer(d.Server, &server{})
+
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- d.Serve(ctx, lis) }()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+	defer conn.Close()
+
+	client := pb.NewGreeterClient(conn)
+	if _, err := client.SayHello(ctx, &pb.HelloRequest{Name: "world"}); err != nil {
+		t.Fatalf("grpc request failed before shutdown: %v", err)
+	}
+
+	if err := d.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("Serve returned unexpected error: %v", err)
+	}
+}
+
+// TestShutdownBeforeServe verifies that shutting down before serving starts is
+// safe and that a subsequent Serve returns immediately with http.ErrServerClosed
+// rather than starting to accept connections.
+func TestShutdownBeforeServe(t *testing.T) {
+	ctx := t.Context()
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lis.Close()
+
+	d := New(0)
+	pb.RegisterGreeterServer(d.Server, &server{})
+
+	if err := d.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown before serve: %v", err)
+	}
+
+	if err := d.Serve(ctx, lis); !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("expected http.ErrServerClosed, got %v", err)
+	}
+}
+
+// TestShutdownDrainsInflight verifies that an in-flight request is allowed to
+// finish: with a request blocked in the handler, Shutdown waits for it, the
+// request completes successfully, and Shutdown then returns cleanly.
+func TestShutdownDrainsInflight(t *testing.T) {
+	ctx := t.Context()
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := &blockingServer{started: make(chan struct{}, 1), release: make(chan struct{})}
+	d := New(0)
+	pb.RegisterGreeterServer(d.Server, srv)
+
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- d.Serve(ctx, lis) }()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+	defer conn.Close()
+
+	client := pb.NewGreeterClient(conn)
+
+	callErr := make(chan error, 1)
+	go func() {
+		_, err := client.SayHello(ctx, &pb.HelloRequest{Name: "world"})
+		callErr <- err
+	}()
+
+	<-srv.started // request is now in the handler
+
+	shutdownErr := make(chan error, 1)
+	go func() { shutdownErr <- d.Shutdown(ctx) }()
+
+	close(srv.release) // let the in-flight handler finish
+
+	if err := <-callErr; err != nil {
+		t.Fatalf("in-flight request failed during graceful shutdown: %v", err)
+	}
+	if err := <-shutdownErr; err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("Serve returned unexpected error: %v", err)
+	}
+}
+
+// TestShutdownTimeoutStopsInflight verifies that when the drain exceeds the
+// context deadline, Shutdown returns the context error and the gRPC server is
+// stopped outright, cutting off the request that overstayed.
+func TestShutdownTimeoutStopsInflight(t *testing.T) {
+	ctx := t.Context()
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := &blockingServer{started: make(chan struct{}, 1), release: make(chan struct{})}
+	t.Cleanup(func() { close(srv.release) })
+
+	d := New(0)
+	pb.RegisterGreeterServer(d.Server, srv)
+
+	go func() { _ = d.Serve(ctx, lis) }()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+	defer conn.Close()
+
+	client := pb.NewGreeterClient(conn)
+
+	callErr := make(chan error, 1)
+	go func() {
+		_, err := client.SayHello(ctx, &pb.HelloRequest{Name: "world"})
+		callErr <- err
+	}()
+
+	<-srv.started // request is now wedged in the handler
+
+	shutdownCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	if err := d.Shutdown(shutdownCtx); err == nil {
+		t.Fatal("expected Shutdown to return an error when the drain exceeds its deadline")
+	}
+
+	if err := <-callErr; err == nil {
+		t.Error("expected the in-flight request to fail once the server is stopped")
+	}
+}
+
+// blockingServer holds each SayHello in the handler until release is closed,
+// signaling started once a request has arrived. It lets a test drive the
+// duplex into a state where a request is genuinely in flight during shutdown.
+type blockingServer struct {
+	pb.UnimplementedGreeterServer
+
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingServer) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
+	s.started <- struct{}{}
+	<-s.release
+	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
 }
 
 // server is used to implement helloworld.GreeterServer.
