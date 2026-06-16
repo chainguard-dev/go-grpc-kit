@@ -6,13 +6,17 @@ SPDX-License-Identifier: Apache-2.0
 package options
 
 import (
+	"context"
 	"net"
 	"net/url"
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 func TestGetEnv(t *testing.T) {
@@ -171,6 +175,53 @@ func TestClientOptions_ReturnsNonEmpty(t *testing.T) {
 	opts := ClientOptions()
 	if len(opts) == 0 {
 		t.Error("expected non-empty client options")
+	}
+}
+
+func TestKeepaliveDialOption(t *testing.T) {
+	if KeepaliveDialOption() == nil {
+		t.Error("expected a non-nil keepalive dial option")
+	}
+}
+
+func TestDialReady(t *testing.T) {
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+
+	srv := grpc.NewServer()
+	go func() { _ = srv.Serve(lis) }()
+	defer srv.Stop()
+
+	u := url.URL{Scheme: "http", Host: lis.Addr().String()}
+
+	conn, err := DialReady(context.Background(), u, time.Second)
+	if err != nil {
+		t.Fatalf("DialReady: %v", err)
+	}
+	defer conn.Close()
+
+	if state := conn.GetState(); state != connectivity.Ready {
+		t.Errorf("expected connection to be %s, got %s", connectivity.Ready, state)
+	}
+}
+
+func TestDialReady_UnreachableFails(t *testing.T) {
+	// Reserve a port, then close it so the dial is refused.
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	addr := lis.Addr().String()
+	lis.Close()
+
+	u := url.URL{Scheme: "http", Host: addr}
+
+	conn, err := DialReady(context.Background(), u, 500*time.Millisecond)
+	if err == nil {
+		conn.Close()
+		t.Fatal("expected DialReady to fail for an unreachable target")
 	}
 }
 
