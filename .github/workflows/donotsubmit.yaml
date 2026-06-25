@@ -27,6 +27,8 @@ jobs:
 
       - name: Check out code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Do Not Submit
         uses: chainguard-dev/actions/donotsubmit@5f020827ba80ff5d64d45116542d0c733e8e7e71 # v1.6.23

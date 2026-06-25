@@ -27,6 +27,8 @@ jobs:
 
     - name: Check out code onto GOPATH
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        persist-credentials: false
 
     # https://github.com/mvdan/github-actions-golang#how-do-i-set-up-caching-between-builds
     - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
