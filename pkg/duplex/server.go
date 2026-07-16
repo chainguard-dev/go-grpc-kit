@@ -15,8 +15,6 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 
 	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
@@ -25,15 +23,14 @@ import (
 )
 
 // handler routes inbound requests to either the gRPC server or the gateway MUX
-// based on the request content type, served over h2c so gRPC works on a
-// cleartext port. Each request is counted while it runs, so Shutdown can wait
-// for in-flight requests to finish: the gRPC requests are served over hijacked
-// h2c connections that http.Server.Shutdown does not track, so counting them
-// here is the only way to know when they have drained.
+// based on the request content type, served over cleartext HTTP/2 (h2c) so gRPC
+// works on a cleartext port. Unencrypted HTTP/2 is enabled on the http.Server
+// via its Protocols field (see httpServerInstance). Each request is counted
+// while it runs, so Shutdown can wait for in-flight requests to finish.
 // See also, https://grpc-ecosystem.github.io/grpc-gateway/
 // This is based on: https://github.com/philips/grpc-gateway-example/issues/22#issuecomment-490733965
 func (d *Duplex) handler() http.Handler {
-	return h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d.inflight.add()
 		defer d.inflight.done()
 
@@ -43,7 +40,7 @@ func (d *Duplex) handler() http.Handler {
 		}
 
 		d.MUX.ServeHTTP(w, r)
-	}), &http2.Server{})
+	})
 }
 
 // allowedHeaders are HTTP headers that should be forwarded as gRPC metadata
@@ -160,9 +157,15 @@ func (d *Duplex) Serve(_ context.Context, listener net.Listener) error {
 // first use.
 func (d *Duplex) httpServerInstance() *http.Server {
 	d.httpServerOnce.Do(func() {
+		// Enable cleartext HTTP/2 (h2c) alongside HTTP/1 so gRPC works on the
+		// cleartext port. This replaces the deprecated x/net/http2/h2c handler.
+		protocols := new(http.Protocols)
+		protocols.SetHTTP1(true)
+		protocols.SetUnencryptedHTTP2(true)
 		d.httpServer = &http.Server{
 			Handler:           d.handler(),
 			ReadHeaderTimeout: 10 * time.Second,
+			Protocols:         protocols,
 		}
 	})
 
@@ -178,29 +181,36 @@ func (d *Duplex) httpServerInstance() *http.Server {
 // context with a deadline to cap it, or a long-lived request will hold shutdown
 // open indefinitely.
 //
-// gRPC is served over h2c, whose connections http.Server.Shutdown does not
-// track once hijacked, so its return does not imply gRPC has drained; and
+// gRPC is served over cleartext HTTP/2 via a grpc.Server.ServeHTTP handler, and
 // grpc.Server.GracefulStop panics on a ServeHTTP-backed transport, so it cannot
-// drain them either. Shutdown therefore stops the listeners via the HTTP
+// drain those requests. Shutdown therefore stops the listeners via the HTTP
 // server, waits on its own in-flight counter for requests of both kinds to
-// finish, then stops the gRPC server with grpc.Server.Stop and closes the HTTP
-// server. Those final steps run on every path: after a clean drain they release
-// the now-idle server; if the wait ended on ctx they also close transports that
-// are still open.
+// finish, then stops the gRPC server with grpc.Server.Stop. On a clean drain the
+// background http.Server.Shutdown is left to close the now-idle connections
+// gracefully, flushing any buffered response; only when the wait ends on ctx
+// does Shutdown force the HTTP server closed to cut off transports still open.
 func (d *Duplex) Shutdown(ctx context.Context) error {
 	server := d.httpServerInstance()
 
-	// Stop accepting new connections and drain the gateway's tracked
-	// connections. This does not wait for hijacked h2c (gRPC) connections, so
-	// run it in the background while the in-flight counter is drained below. Its
-	// error is dropped deliberately: the wait below reports the drain outcome,
-	// and the Close below is the backstop.
+	// Stop accepting new connections and drain the HTTP server's connections.
+	// Run it in the background while the in-flight counter is drained below,
+	// which is what reports the outcome for requests of both kinds. Its error is
+	// dropped deliberately: the wait below reports the drain outcome, and the
+	// conditional Close below is the backstop.
 	go func() { _ = server.Shutdown(ctx) }()
 
 	err := d.inflight.wait(ctx)
 
 	d.Server.Stop()
-	_ = server.Close()
+
+	// On a clean drain, don't Close: the in-flight counter reaches zero when the
+	// handler returns, but the HTTP/2 layer may still be flushing the response to
+	// the client, and a Close here would truncate it. Leave the background
+	// Shutdown to close the idle connection gracefully. Only force the server
+	// closed when the wait ended on ctx, to cut off requests that overstayed.
+	if err != nil {
+		_ = server.Close()
+	}
 
 	return err
 }
