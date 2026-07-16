@@ -33,4 +33,8 @@ updates:
     interval: "weekly"
   cooldown:
     default-days: 3
+  groups:
+    actions:
+      update-types:
+        - "patch"
   open-pull-requests-limit: 10
