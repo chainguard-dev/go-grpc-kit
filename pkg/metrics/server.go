@@ -92,7 +92,7 @@ func SetupTracer(ctx context.Context) func() {
 func labelsFromContext(ctx context.Context) prometheus.Labels {
 	cid := "unknown"
 	if clientids := metadata.ValueFromIncomingContext(ctx, clientid.CGClientID); len(clientids) > 0 {
-		cid = clientids[0]
+		cid = clientid.Normalize(clientids[0])
 	}
 	return prometheus.Labels{clientid.CGClientID: cid}
 }

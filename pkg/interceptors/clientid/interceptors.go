@@ -8,6 +8,7 @@ package clientid
 import (
 	"context"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -19,20 +20,55 @@ const CGClientID = "cgclientid"
 const CGRequestID = "cgrequestid"
 
 var cachedClientID = sync.OnceValue(func() string {
-	// Prefer K_SERVICE (Cloud Run service name) for descriptive labels.
-	if svc := os.Getenv("K_SERVICE"); svc != "" {
-		return svc
+	kService := os.Getenv("K_SERVICE")
+	configuredID := os.Getenv("CG_CLIENT_ID")
+	if kService != "" || configuredID != "" {
+		return resolveClientID(kService, configuredID, "", nil)
 	}
-	// Prefer CG_CLIENT_ID for explicit override.
-	if id := os.Getenv("CG_CLIENT_ID"); id != "" {
-		return id
+	executable, err := os.Executable()
+	return resolveClientID("", "", executable, err)
+})
+
+func resolveClientID(kService, configuredID, executable string, executableErr error) string {
+	if kService != "" {
+		return kService
 	}
-	e, err := os.Executable()
-	if err != nil {
+	if configuredID != "" {
+		return configuredID
+	}
+	if executableErr != nil {
 		return "unknown"
 	}
-	return e
-})
+	return Normalize(executable)
+}
+
+// Normalize returns a stable executable name for absolute client ID paths.
+// Other client IDs are returned unchanged.
+func Normalize(id string) string {
+	if !isAbsolutePath(id) {
+		return id
+	}
+
+	trimmed := strings.TrimRight(id, `/\`)
+	if trimmed == "" {
+		return id
+	}
+	if separator := strings.LastIndexAny(trimmed, `/\`); separator >= 0 {
+		return trimmed[separator+1:]
+	}
+	return trimmed
+}
+
+func isAbsolutePath(value string) bool {
+	if strings.HasPrefix(value, "/") || strings.HasPrefix(value, `\\`) {
+		return true
+	}
+	return len(value) >= 3 && isASCIILetter(value[0]) && value[1] == ':' && (value[2] == '/' || value[2] == '\\')
+}
+
+func isASCIILetter(value byte) bool {
+	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
+}
 
 func appendClientID(ctx context.Context) context.Context {
 	// Always set this service's identity on outgoing calls so the

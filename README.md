@@ -81,4 +81,6 @@ Automatically propagates caller identity via gRPC metadata:
   `cgclientid` (service identity) and `cgrequestid` (unique per-call UUID)
   to outgoing metadata.
 
-Client ID resolution: `K_SERVICE` env → `CG_CLIENT_ID` env → executable path.
+Client ID resolution: `K_SERVICE` env → `CG_CLIENT_ID` env → executable name.
+Servers also normalize absolute executable paths from older clients before
+using them as metric labels.

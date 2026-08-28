@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package metrics
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +14,36 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"google.golang.org/grpc/metadata"
+
+	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
 )
+
+func TestLabelsFromContext(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want string
+	}{
+		{name: "missing", want: "unknown"},
+		{name: "Unix executable path", id: "/tmp/random/chainctl", want: "chainctl"},
+		{name: "Windows executable path", id: `C:\Temp\random\chainctl.exe`, want: "chainctl.exe"},
+		{name: "service ID", id: "issuer", want: "issuer"},
+		{name: "relative service ID", id: "prober/issuer", want: "prober/issuer"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			if test.id != "" {
+				ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(clientid.CGClientID, test.id))
+			}
+			if got := labelsFromContext(ctx)[clientid.CGClientID]; got != test.want {
+				t.Errorf("labelsFromContext() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
 
 // brokenCollector is a prometheus.Collector that always returns an error
 // during collection, simulating the OTel prometheus exporter behavior

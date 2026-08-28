@@ -7,6 +7,7 @@ package clientid
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"google.golang.org/grpc/metadata"
@@ -69,15 +70,68 @@ func TestAppendClientID_UniqueRequestIDs(t *testing.T) {
 	}
 }
 
-func TestCachedClientID_KServiceEnv(t *testing.T) {
-	// This tests the getClientID behavior indirectly via cachedClientID.
-	// Since cachedClientID uses sync.OnceValue, we test the logic directly.
-	t.Run("K_SERVICE takes precedence", func(t *testing.T) {
-		// We can't easily test the sync.OnceValue behavior since it's
-		// already initialized, but we verify the current value is non-empty.
-		id := cachedClientID()
-		if id == "" {
-			t.Error("cachedClientID should never be empty")
-		}
-	})
+func TestResolveClientID(t *testing.T) {
+	tests := []struct {
+		name          string
+		kService      string
+		configuredID  string
+		executable    string
+		executableErr error
+		want          string
+	}{
+		{
+			name:         "K_SERVICE takes precedence",
+			kService:     "oidc",
+			configuredID: "chainctl",
+			executable:   "/tmp/random/chainctl",
+			want:         "oidc",
+		},
+		{
+			name:         "CG_CLIENT_ID takes precedence over executable",
+			configuredID: "explicit/client",
+			executable:   "/tmp/random/chainctl",
+			want:         "explicit/client",
+		},
+		{
+			name:       "executable fallback is normalized",
+			executable: "/tmp/random/chainctl",
+			want:       "chainctl",
+		},
+		{
+			name:          "executable lookup failure",
+			executableErr: errors.New("lookup failed"),
+			want:          "unknown",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := resolveClientID(test.kService, test.configuredID, test.executable, test.executableErr); got != test.want {
+				t.Errorf("resolveClientID() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestNormalize(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want string
+	}{
+		{name: "Unix path", id: "/tmp/random/chainctl", want: "chainctl"},
+		{name: "Windows drive path", id: `C:\Temp\random\chainctl.exe`, want: "chainctl.exe"},
+		{name: "Windows UNC path", id: `\\server\share\chainctl.exe`, want: "chainctl.exe"},
+		{name: "relative path", id: "tmp/random/chainctl", want: "tmp/random/chainctl"},
+		{name: "service ID", id: "prober/oidc", want: "prober/oidc"},
+		{name: "empty", id: "", want: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := Normalize(test.id); got != test.want {
+				t.Errorf("Normalize(%q) = %q, want %q", test.id, got, test.want)
+			}
+		})
+	}
 }
