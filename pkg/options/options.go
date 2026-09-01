@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
+	kitmetrics "chainguard.dev/go-grpc-kit/pkg/metrics"
 	"chainguard.dev/go-grpc-kit/pkg/trace"
 	"github.com/chainguard-dev/clog"
 )
@@ -189,6 +190,7 @@ func GRPCDialOptions() []grpc.DialOption {
 
 	return []grpc.DialOption{
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithStatsHandler(kitmetrics.ClientStatsHandler()),
 		grpc.WithStatsHandler(trace.PreserveTraceParentHandler),
 		grpc.WithChainUnaryInterceptor(clientid.UnaryClientInterceptor(), state().clientMetrics.UnaryClientInterceptor(), grpc_retry.UnaryClientInterceptor(retryOpts...)),
 		grpc.WithChainStreamInterceptor(clientid.StreamClientInterceptor(), state().clientMetrics.StreamClientInterceptor(), grpc_retry.StreamClientInterceptor(retryOpts...)),
