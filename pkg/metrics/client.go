@@ -33,18 +33,19 @@ var clientMetrics = sync.OnceValue(func() *clientTransportMetrics {
 
 func newClientTransportMetrics(registerer prometheus.Registerer) *clientTransportMetrics {
 	factory := promauto.With(registerer)
-	labels := []string{"grpc_service", "grpc_method"}
+	dispatchLabels := []string{"grpc_service", "grpc_method"}
+	activeLabels := []string{"grpc_service", "grpc_method", "phase"}
 
 	return &clientTransportMetrics{
 		dispatchDelay: factory.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "grpc_client_attempt_dispatch_delay_seconds",
 			Help:    "Time from starting a gRPC client attempt until it is dispatched to a transport.",
 			Buckets: []float64{0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 2.5, 5, 10, 25, 60},
-		}, labels),
+		}, dispatchLabels),
 		activeAttempts: factory.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "grpc_client_attempts_active",
 			Help: "Number of active gRPC client attempts by transport phase.",
-		}, append(labels, "phase")),
+		}, activeLabels),
 	}
 }
 
