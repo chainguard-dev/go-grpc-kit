@@ -1,6 +1,6 @@
 module chainguard.dev/go-grpc-kit
 
-go 1.26
+go 1.27
 
 require (
 	github.com/chainguard-dev/clog v1.8.1
