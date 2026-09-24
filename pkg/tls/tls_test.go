@@ -26,7 +26,6 @@ import (
 
 	"chainguard.dev/go-grpc-kit/pkg/duplex"
 	pb "chainguard.dev/go-grpc-kit/pkg/tls/internal/proto/helloworld"
-	"golang.org/x/net/http2"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -96,9 +95,12 @@ func TestTLS(t *testing.T) {
 	t.Log("grpc response:", resp)
 
 	// http client
+	protocols := new(http.Protocols)
+	protocols.SetHTTP2(true)
 	httpClient := &http.Client{
-		Transport: &http2.Transport{
+		Transport: &http.Transport{
 			TLSClientConfig: tlsConfig,
+			Protocols:       protocols,
 		},
 	}
 	body, err := json.Marshal(req)
