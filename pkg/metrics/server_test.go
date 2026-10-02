@@ -8,12 +8,18 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 
 	"chainguard.dev/go-grpc-kit/pkg/interceptors/clientid"
@@ -137,5 +143,51 @@ func TestGetServerWithPprof(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("GET %s status: got %d, want %d", path, resp.StatusCode, http.StatusOK)
 		}
+	}
+}
+
+func TestRegisterAndServeCreatesOnlyLiveSeries(t *testing.T) {
+	server := grpc.NewServer()
+	healthpb.RegisterHealthServer(server, health.NewServer())
+
+	// The /metrics goroutine exits the process if its listener closes, so the
+	// listener stays open until the test binary exits.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() = %v", err)
+	}
+	RegisterAndServe(server, listener, false)
+
+	families := []string{
+		"grpc_server_started_total",
+		"grpc_server_handled_total",
+		"grpc_server_msg_received_total",
+		"grpc_server_msg_sent_total",
+		"grpc_server_handling_seconds",
+	}
+	if got := testutil.CollectAndCount(state().serverMetrics, families...); got != 0 {
+		t.Errorf("series before any RPC: got %d, want 0", got)
+	}
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(clientid.CGClientID, "issuer"))
+	info := &grpc.UnaryServerInfo{FullMethod: "/grpc.health.v1.Health/Check"}
+	handler := func(context.Context, any) (any, error) { return &healthpb.HealthCheckResponse{}, nil }
+	if _, err := UnaryServerInterceptor()(ctx, &healthpb.HealthCheckRequest{}, info, handler); err != nil {
+		t.Fatalf("interceptor() = %v", err)
+	}
+
+	for _, family := range families {
+		if got := testutil.CollectAndCount(state().serverMetrics, family); got != 1 {
+			t.Errorf("%s series after one RPC: got %d, want 1", family, got)
+		}
+	}
+
+	want := `
+# HELP grpc_server_handled_total Total number of RPCs completed on the server, regardless of success or failure.
+# TYPE grpc_server_handled_total counter
+grpc_server_handled_total{cgclientid="issuer",grpc_code="OK",grpc_method="Check",grpc_service="grpc.health.v1.Health",grpc_type="unary"} 1
+`
+	if err := testutil.CollectAndCompare(state().serverMetrics, strings.NewReader(want), "grpc_server_handled_total"); err != nil {
+		t.Error(err)
 	}
 }
