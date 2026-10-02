@@ -8,10 +8,11 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -146,9 +147,29 @@ func TestGetServerWithPprof(t *testing.T) {
 	}
 }
 
+var liveSeriesRuns atomic.Int64
+
 func TestRegisterAndServeCreatesOnlyLiveSeries(t *testing.T) {
 	server := grpc.NewServer()
 	healthpb.RegisterHealthServer(server, health.NewServer())
+
+	families := []string{
+		"grpc_server_started_total",
+		"grpc_server_handled_total",
+		"grpc_server_msg_received_total",
+		"grpc_server_msg_sent_total",
+		"grpc_server_handling_seconds",
+	}
+	// The collector is process-global, so counts are relative to earlier runs
+	// and each run uses its own client ID.
+	counts := func() map[string]int {
+		got := make(map[string]int, len(families))
+		for _, family := range families {
+			got[family] = testutil.CollectAndCount(state().serverMetrics, family)
+		}
+		return got
+	}
+	initial := counts()
 
 	// The /metrics goroutine exits the process if its listener closes, so the
 	// listener stays open until the test binary exits.
@@ -158,36 +179,73 @@ func TestRegisterAndServeCreatesOnlyLiveSeries(t *testing.T) {
 	}
 	RegisterAndServe(server, listener, false)
 
-	families := []string{
-		"grpc_server_started_total",
-		"grpc_server_handled_total",
-		"grpc_server_msg_received_total",
-		"grpc_server_msg_sent_total",
-		"grpc_server_handling_seconds",
-	}
-	if got := testutil.CollectAndCount(state().serverMetrics, families...); got != 0 {
-		t.Errorf("series before any RPC: got %d, want 0", got)
+	registered := counts()
+	for _, family := range families {
+		if got := registered[family] - initial[family]; got != 0 {
+			t.Errorf("%s series added by RegisterAndServe: got %d, want 0", family, got)
+		}
 	}
 
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(clientid.CGClientID, "issuer"))
+	id := fmt.Sprintf("issuer-%d", liveSeriesRuns.Add(1))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(clientid.CGClientID, id))
 	info := &grpc.UnaryServerInfo{FullMethod: "/grpc.health.v1.Health/Check"}
 	handler := func(context.Context, any) (any, error) { return &healthpb.HealthCheckResponse{}, nil }
 	if _, err := UnaryServerInterceptor()(ctx, &healthpb.HealthCheckRequest{}, info, handler); err != nil {
 		t.Fatalf("interceptor() = %v", err)
 	}
 
+	served := counts()
 	for _, family := range families {
-		if got := testutil.CollectAndCount(state().serverMetrics, family); got != 1 {
-			t.Errorf("%s series after one RPC: got %d, want 1", family, got)
+		if got := served[family] - registered[family]; got != 1 {
+			t.Errorf("%s series added by one RPC: got %d, want 1", family, got)
 		}
 	}
 
-	want := `
-# HELP grpc_server_handled_total Total number of RPCs completed on the server, regardless of success or failure.
-# TYPE grpc_server_handled_total counter
-grpc_server_handled_total{cgclientid="issuer",grpc_code="OK",grpc_method="Check",grpc_service="grpc.health.v1.Health",grpc_type="unary"} 1
-`
-	if err := testutil.CollectAndCompare(state().serverMetrics, strings.NewReader(want), "grpc_server_handled_total"); err != nil {
-		t.Error(err)
+	want := map[string]string{
+		"cgclientid":   id,
+		"grpc_code":    "OK",
+		"grpc_method":  "Check",
+		"grpc_service": "grpc.health.v1.Health",
+		"grpc_type":    "unary",
 	}
+	if got := handledSeries(t, id); !maps.Equal(got, want) {
+		t.Errorf("grpc_server_handled_total labels: got %v, want %v", got, want)
+	}
+}
+
+// handledSeries returns the labels of the single grpc_server_handled_total
+// series for the client ID, failing unless its value is 1.
+func handledSeries(t *testing.T, id string) map[string]string {
+	t.Helper()
+	reg := prometheus.NewPedanticRegistry()
+	if err := reg.Register(state().serverMetrics); err != nil {
+		t.Fatalf("Register() = %v", err)
+	}
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("Gather() = %v", err)
+	}
+	var found map[string]string
+	for _, mf := range mfs {
+		if mf.GetName() != "grpc_server_handled_total" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			labels := make(map[string]string, len(m.GetLabel()))
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			if labels["cgclientid"] != id {
+				continue
+			}
+			if found != nil {
+				t.Fatalf("more than one grpc_server_handled_total series for %q", id)
+			}
+			if got := m.GetCounter().GetValue(); got != 1 {
+				t.Errorf("grpc_server_handled_total value: got %v, want 1", got)
+			}
+			found = labels
+		}
+	}
+	return found
 }
