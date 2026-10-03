@@ -405,6 +405,161 @@ func TestShutdownTimeoutStopsInflight(t *testing.T) {
 	}
 }
 
+// TestServeDrainsOnContextDone verifies that canceling Serve's context shuts
+// the duplex down gracefully: Serve keeps waiting while a request is in the
+// handler, the request completes, and only then does Serve return nil.
+func TestServeDrainsOnContextDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := &blockingServer{started: make(chan struct{}, 1), release: make(chan struct{})}
+	d := New(0)
+	pb.RegisterGreeterServer(d.Server, srv)
+
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- d.Serve(ctx, lis) }()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+	defer conn.Close()
+
+	callErr := make(chan error, 1)
+	go func() {
+		_, err := pb.NewGreeterClient(conn).SayHello(t.Context(), &pb.HelloRequest{Name: "world"})
+		callErr <- err
+	}()
+
+	<-srv.started // request is now in the handler
+	cancel()
+
+	select {
+	case err := <-serveErr:
+		t.Fatalf("Serve returned %v while a request was still in flight", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(srv.release) // let the in-flight handler finish
+
+	if err := <-callErr; err != nil {
+		t.Fatalf("in-flight request failed during graceful shutdown: %v", err)
+	}
+	if err := serveResult(t, serveErr); err != nil {
+		t.Fatalf("Serve: got = %v, want = nil", err)
+	}
+}
+
+// TestServeContextShutdownTimeout verifies that when the drain started by a
+// canceled context exceeds ShutdownTimeout, Serve returns the deadline error
+// instead of waiting for the request.
+func TestServeContextShutdownTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := &blockingServer{started: make(chan struct{}, 1), release: make(chan struct{})}
+	t.Cleanup(func() { close(srv.release) })
+
+	d := New(0)
+	d.ShutdownTimeout = 200 * time.Millisecond
+	pb.RegisterGreeterServer(d.Server, srv)
+
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- d.Serve(ctx, lis) }()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+	defer conn.Close()
+
+	go func() { _, _ = pb.NewGreeterClient(conn).SayHello(t.Context(), &pb.HelloRequest{Name: "world"}) }()
+
+	<-srv.started // request is now wedged in the handler
+	cancel()
+
+	if err := serveResult(t, serveErr); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Serve: got = %v, want = %v", err, context.DeadlineExceeded)
+	}
+}
+
+// serveResult waits for a Serve or ListenAndServe call to return, failing the
+// test if it is still serving after its context was canceled.
+func serveResult(t *testing.T, serveErr <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-serveErr:
+		return err
+	case <-time.After(10 * time.Second):
+		t.Fatal("still serving 10s after the context was canceled")
+		return nil
+	}
+}
+
+// TestListenAndServeReturnsOnCancel verifies that ListenAndServe returns nil
+// once its context is canceled, even when the cancel races the listener
+// starting.
+func TestListenAndServeReturnsOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+
+	d := New(0)
+	d.Host = "localhost"
+	pb.RegisterGreeterServer(d.Server, &server{})
+
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- d.ListenAndServe(ctx) }()
+
+	cancel()
+
+	if err := serveResult(t, serveErr); err != nil {
+		t.Fatalf("ListenAndServe: got = %v, want = nil", err)
+	}
+}
+
+// TestServeNegativeShutdownTimeoutIgnoresContext verifies that a negative
+// ShutdownTimeout leaves shutdown to the caller: Serve keeps serving after its
+// context is canceled and returns http.ErrServerClosed once Shutdown runs.
+func TestServeNegativeShutdownTimeoutIgnoresContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	d := New(0)
+	d.ShutdownTimeout = -1
+	pb.RegisterGreeterServer(d.Server, &server{})
+
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- d.Serve(ctx, lis) }()
+
+	cancel()
+
+	select {
+	case err := <-serveErr:
+		t.Fatalf("Serve returned %v after its context was canceled, want it to keep serving", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	if err := d.Shutdown(t.Context()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	if err := serveResult(t, serveErr); !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("Serve: got = %v, want = %v", err, http.ErrServerClosed)
+	}
+}
+
 // blockingServer holds each SayHello in the handler until release is closed,
 // signaling started once a request has arrived. It lets a test drive the
 // duplex into a state where a request is genuinely in flight during shutdown.

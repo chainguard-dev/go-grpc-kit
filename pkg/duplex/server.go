@@ -6,7 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 package duplex
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -67,6 +69,12 @@ type Duplex struct {
 	Host        string
 	Port        int
 	DialOptions []grpc.DialOption
+
+	// ShutdownTimeout bounds the drain that ListenAndServe and Serve run when
+	// their context is done. Zero means DefaultShutdownTimeout. A negative
+	// value leaves shutdown to the caller: ListenAndServe and Serve then ignore
+	// their context and return only after Shutdown is called.
+	ShutdownTimeout time.Duration
 
 	httpServerOnce sync.Once
 	httpServer     *http.Server
@@ -138,19 +146,63 @@ func (d *Duplex) RegisterHandler(ctx context.Context, fn RegisterHandlerFromEndp
 	return fn(ctx, d.MUX, d.Loopback, d.DialOptions)
 }
 
+// DefaultShutdownTimeout bounds the drain ListenAndServe and Serve run when
+// their context is done and Duplex.ShutdownTimeout is unset. It leaves time to
+// exit inside Cloud Run's default 10 second grace between SIGTERM and SIGKILL.
+const DefaultShutdownTimeout = 8 * time.Second
+
 // ListenAndServe starts both the gRPC server and HTTP Gateway MUX.
-// Note: This call is blocking. It returns http.ErrServerClosed after Shutdown.
-func (d *Duplex) ListenAndServe(_ context.Context) error {
+// Note: This call is blocking. When ctx is done it shuts the duplex down,
+// bounded by ShutdownTimeout, and returns once in-flight requests have drained
+// and their responses are flushed: nil on a clean drain, otherwise the
+// shutdown error joined with any serve error. When Shutdown is called directly
+// and ctx is not done, it returns http.ErrServerClosed. With a negative
+// ShutdownTimeout it ignores ctx.
+func (d *Duplex) ListenAndServe(ctx context.Context) error {
 	server := d.httpServerInstance()
 	server.Addr = fmt.Sprintf("%s:%d", d.Host, d.Port)
 
-	return server.ListenAndServe()
+	return d.serveUntilDone(ctx, server.ListenAndServe)
 }
 
 // Serve starts both the gRPC server and HTTP Gateway MUX on the given listener.
-// Note: This call is blocking. It returns http.ErrServerClosed after Shutdown.
-func (d *Duplex) Serve(_ context.Context, listener net.Listener) error {
-	return d.httpServerInstance().Serve(listener)
+// Note: This call is blocking. It returns as ListenAndServe does.
+func (d *Duplex) Serve(ctx context.Context, listener net.Listener) error {
+	return d.serveUntilDone(ctx, func() error { return d.httpServerInstance().Serve(listener) })
+}
+
+// serveUntilDone runs serve until it returns or ctx is done. On ctx it shuts
+// the duplex down and waits for serve to return too, so the caller does not
+// exit while requests are still draining: http.Server.Serve returns
+// http.ErrServerClosed as soon as Shutdown closes the listeners, well before
+// the drain finishes.
+func (d *Duplex) serveUntilDone(ctx context.Context, serve func() error) error {
+	if d.ShutdownTimeout < 0 {
+		return serve()
+	}
+
+	served := make(chan error, 1)
+	go func() { served <- serve() }()
+
+	select {
+	case err := <-served:
+		return err
+	case <-ctx.Done():
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cmp.Or(d.ShutdownTimeout, DefaultShutdownTimeout))
+	defer cancel()
+	err := d.Shutdown(shutdownCtx)
+	if err == nil {
+		// Shutdown leaves the http.Server closing idle connections in the
+		// background so buffered responses flush. Wait for that here before
+		// the deferred cancel stops it and the caller exits.
+		err = d.httpServerInstance().Shutdown(shutdownCtx)
+	}
+	if serveErr := <-served; serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		return errors.Join(err, serveErr)
+	}
+	return err
 }
 
 // httpServerInstance returns the underlying http.Server, constructing it on
@@ -175,7 +227,8 @@ func (d *Duplex) httpServerInstance() *http.Server {
 // Shutdown gracefully stops the duplex. It stops accepting new connections and
 // waits for in-flight requests to finish, bounded by ctx; if ctx is done before
 // they drain it stops waiting and returns ctx.Err(). After Shutdown returns, the
-// blocking ListenAndServe or Serve call returns http.ErrServerClosed.
+// blocking ListenAndServe or Serve call returns http.ErrServerClosed, unless
+// its own context is also done, in which case it returns its own drain's result.
 //
 // The wait is bounded only by ctx, mirroring http.Server.Shutdown: pass a
 // context with a deadline to cap it, or a long-lived request will hold shutdown
