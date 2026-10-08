@@ -136,8 +136,8 @@ func getServer(enablePprof bool) *http.Server {
 }
 
 // Used ONLY for testing
-func RegisterAndServe(server *grpc.Server, listener net.Listener, enablePprof bool) {
-	state().serverMetrics.InitializeMetrics(server)
+func RegisterAndServe(_ *grpc.Server, listener net.Listener, enablePprof bool) {
+	state()
 
 	go func() {
 		s := getServer(enablePprof)
@@ -148,8 +148,15 @@ func RegisterAndServe(server *grpc.Server, listener net.Listener, enablePprof bo
 	}()
 }
 
-func RegisterListenAndServe(server *grpc.Server, listenAddr string, enablePprof bool) {
-	state().serverMetrics.InitializeMetrics(server)
+// The server's methods are deliberately not pre-initialized with
+// InitializeMetrics. Every live series carries the cgclientid that
+// labelsFromContext sets, so a pre-initialized series with an empty cgclientid
+// never becomes a live series and is only scraped and billed. With context
+// labels, go-grpc-middleware providers/prometheus v1.1.0 also writes the status
+// code into cgclientid, adding 17 such grpc_server_handled_total series per
+// method.
+func RegisterListenAndServe(_ *grpc.Server, listenAddr string, enablePprof bool) {
+	state()
 
 	go func() {
 		s := getServer(enablePprof)
