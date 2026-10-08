@@ -27,6 +27,8 @@ import (
 // works on a cleartext port. Unencrypted HTTP/2 is enabled on the http.Server
 // via its Protocols field (see httpServerInstance). Each request is counted
 // while it runs, so Shutdown can wait for in-flight requests to finish.
+// Gateway requests have their bodies bounded (see serveGateway); gRPC requests
+// do not, so long-lived gRPC streams are never cut off by a body deadline.
 // See also, https://grpc-ecosystem.github.io/grpc-gateway/
 // This is based on: https://github.com/philips/grpc-gateway-example/issues/22#issuecomment-490733965
 func (d *Duplex) handler() http.Handler {
@@ -39,7 +41,7 @@ func (d *Duplex) handler() http.Handler {
 			return
 		}
 
-		d.MUX.ServeHTTP(w, r)
+		d.serveGateway(w, r)
 	})
 }
 
@@ -68,6 +70,12 @@ type Duplex struct {
 	Port        int
 	DialOptions []grpc.DialOption
 
+	// maxRequestBodyBytes and requestBodyReadTimeout bound the request bodies
+	// served by MUX. See WithMaxRequestBodyBytes and
+	// WithRequestBodyReadTimeout.
+	maxRequestBodyBytes    int64
+	requestBodyReadTimeout time.Duration
+
 	httpServerOnce sync.Once
 	httpServer     *http.Server
 
@@ -79,14 +87,17 @@ type Duplex struct {
 type RegisterHandlerFromEndpointFn func(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) error
 
 // New creates a Duplex gRPC server / gRPC HTTP Gateway. New takes in options
-// for `grpc.NewServer`, typed `grpc.ServerOption`, and `runtime.NewServeMux`,
-// typed `runtime.ServeMuxOption`. Unknown opts will cause a panic.
+// for `grpc.NewServer`, typed `grpc.ServerOption`, `runtime.NewServeMux`,
+// typed `runtime.ServeMuxOption`, the loopback connection, typed
+// `grpc.DialOption`, and the Duplex itself, typed `Option`. Unknown opts will
+// cause a panic.
 func New(port int, opts ...interface{}) *Duplex {
 	// Split out the options into their types.
 	var (
 		gOpts []grpc.ServerOption
 		dOpts []grpc.DialOption
 		mOpts []runtime.ServeMuxOption
+		xOpts []Option
 	)
 	for _, o := range opts {
 		switch opt := o.(type) {
@@ -96,6 +107,8 @@ func New(port int, opts ...interface{}) *Duplex {
 			mOpts = append(mOpts, opt)
 		case grpc.DialOption:
 			dOpts = append(dOpts, opt)
+		case Option:
+			xOpts = append(xOpts, opt)
 		default:
 			panic(fmt.Errorf("unknown type: %T", o))
 		}
@@ -119,6 +132,12 @@ func New(port int, opts ...interface{}) *Duplex {
 		Loopback:    fmt.Sprintf("localhost:%d", port),
 		Port:        port,
 		DialOptions: dOpts,
+
+		maxRequestBodyBytes:    DefaultMaxRequestBodyBytes,
+		requestBodyReadTimeout: DefaultRequestBodyReadTimeout,
+	}
+	for _, opt := range xOpts {
+		opt(d)
 	}
 	return d
 }
