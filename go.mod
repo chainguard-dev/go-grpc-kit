@@ -6,7 +6,7 @@ require (
 	github.com/chainguard-dev/clog v1.8.1
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
+	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.1
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0
 	github.com/kelseyhightower/envconfig v1.4.0
