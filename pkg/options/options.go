@@ -181,7 +181,9 @@ func LoopbackDialOptions() []grpc.DialOption {
 
 // GRPCDialOptions returns the standard set of gRPC dial options for production
 // use, including OTEL tracing, Prometheus client metrics, client identity
-// propagation, and retry support.
+// propagation, and retry support. That retry, enabled by GRPC_CLIENT_MAX_RETRY,
+// covers every method on the connection, while IdempotentRetryDialOptions
+// retries only the methods a service's proto marks safe to repeat.
 func GRPCDialOptions() []grpc.DialOption {
 	retryOpts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffExponential(100 * time.Millisecond)),
