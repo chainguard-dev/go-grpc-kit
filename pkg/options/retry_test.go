@@ -155,9 +155,9 @@ func TestIdempotentRetryServiceConfig(t *testing.T) {
 	}}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			raw, err := IdempotentRetryServiceConfig(tc.policy, tc.svcs...)
+			raw, err := idempotentRetryServiceConfig(tc.policy, tc.svcs...)
 			if err != nil {
-				t.Fatalf("IdempotentRetryServiceConfig: %v", err)
+				t.Fatalf("idempotentRetryServiceConfig: %v", err)
 			}
 			conn, err := grpc.NewClient("passthrough:///unused", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDefaultServiceConfig(raw))
 			if err != nil {

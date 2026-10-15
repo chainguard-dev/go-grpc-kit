@@ -54,17 +54,16 @@ func DefaultRetryPolicy() RetryPolicy {
 // IdempotentRetryDialOptions returns the dial options that retry, under p,
 // every method of svcs its proto marks NO_SIDE_EFFECTS or IDEMPOTENT. They set
 // the connection's default service config, which a resolver-supplied config,
-// such as an xDS target's, replaces. A caller with its own default config, a
-// load-balancing policy for one, builds a combined one from
-// IdempotentRetryServiceConfig and passes it after these options, which keeps
-// the larger replay buffer. gRPC replays only a request it buffered, 256 KiB
-// by default, so the options raise that to SendMsgSize for the unary calls
-// they retry, leaving streams and unmarked methods at the default.
+// such as an xDS target's, replaces, and which does not combine with a default
+// config of the caller's own (a load-balancing policy, say): whichever is
+// passed last wins. gRPC replays only a request it buffered, 256 KiB by
+// default, so the options raise that to SendMsgSize for the unary calls they
+// retry, leaving streams and unmarked methods at the default.
 // DefaultRetryPolicy suits most services. Leave GRPC_CLIENT_MAX_RETRY unset
 // on such a connection: its interceptor retries every method, on top of this
 // policy.
 func IdempotentRetryDialOptions(p RetryPolicy, svcs ...protoreflect.ServiceDescriptor) ([]grpc.DialOption, error) {
-	cfg, err := IdempotentRetryServiceConfig(p, svcs...)
+	cfg, err := idempotentRetryServiceConfig(p, svcs...)
 	if err != nil {
 		return nil, err
 	}
@@ -92,14 +91,12 @@ func retryBufferInterceptor(retried map[string]struct{}) grpc.UnaryClientInterce
 	}
 }
 
-// IdempotentRetryServiceConfig returns the gRPC service config that retries,
+// idempotentRetryServiceConfig returns the gRPC service config that retries,
 // under p, every method of svcs its proto marks NO_SIDE_EFFECTS or IDEMPOTENT
 // (the idempotency_level method option). Marking a method is the opt-in: an
 // unmarked one is never sent twice, and services with no marked methods
-// yield an empty config. IdempotentRetryDialOptions installs it as the
-// connection's default. A caller with a service config of its own merges this
-// one into it and passes the result after IdempotentRetryDialOptions.
-func IdempotentRetryServiceConfig(p RetryPolicy, svcs ...protoreflect.ServiceDescriptor) (string, error) {
+// yield an empty config.
+func idempotentRetryServiceConfig(p RetryPolicy, svcs ...protoreflect.ServiceDescriptor) (string, error) {
 	type name struct {
 		Service string `json:"service"`
 		Method  string `json:"method"`
