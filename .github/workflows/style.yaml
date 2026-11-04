@@ -131,7 +131,7 @@ jobs:
         if: ${{ always() }}
 
       - uses: step-security/action-tflint@3bb39a1bdfe833ee6b2dfd382a0264dcee792be4 # v1.28.0
-        if: ${{ always() }}
+        if: ${{ always() && hashFiles('**/*.tf') != '' }}
         with:
           github_token: ${{ secrets.github_token }}
           fail_level: warning
