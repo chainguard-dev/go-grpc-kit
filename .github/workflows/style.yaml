@@ -130,7 +130,7 @@ jobs:
       - uses: chainguard-dev/actions/eof-newline@8f31e9482b447ff2c69eca944a09b4b31a4a85d0 # v1.7.2
         if: ${{ always() }}
 
-      - uses: step-security/action-tflint@3bb39a1bdfe833ee6b2dfd382a0264dcee792be4 # v1.28.0
+      - uses: chainguard-actions/reviewdog-action-tflint@df65f34e1f9c08ed463b32261b7d48a898acb6ac # v1.28.0
         if: ${{ always() && hashFiles('**/*.tf') != '' }}
         with:
           github_token: ${{ secrets.github_token }}
