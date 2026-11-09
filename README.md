@@ -26,8 +26,21 @@ if err := d.ListenAndServe(ctx); err != nil {
 }
 ```
 
-`duplex.New` accepts `grpc.ServerOption`, `runtime.ServeMuxOption`, and
-`grpc.DialOption` (for the internal loopback connection).
+`duplex.New` accepts `grpc.ServerOption`, `runtime.ServeMuxOption`,
+`grpc.DialOption` (for the internal loopback connection), and `duplex.Option`.
+
+Request bodies served by the gateway (not native gRPC) are bounded by default
+to 16 MiB and 60s of read time, because the gateway reads the body before any
+gRPC interceptor, such as authentication, runs. A declared or streamed body over
+the cap gets 413, and one not read in time gets 408. Servers that take larger or
+slower bodies raise the bounds; a non-positive value removes a bound:
+
+```go
+d := duplex.New(8080,
+    duplex.WithMaxRequestBodyBytes(64<<20),
+    duplex.WithRequestBodyReadTimeout(2*time.Minute),
+)
+```
 
 ### `pkg/options` — gRPC Client Dial Options
 
