@@ -37,7 +37,7 @@ jobs:
           check-latest: true
           cache: false
 
-      - uses: chainguard-dev/actions/gofmt@a25ce483d875a46f4c837e85e32e0fda602693f5 # v1.8.1
+      - uses: chainguard-dev/actions/gofmt@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2
         with:
           args: -s
 
@@ -66,7 +66,7 @@ jobs:
           check-latest: true
           cache: false
 
-      - uses: chainguard-dev/actions/goimports@a25ce483d875a46f4c837e85e32e0fda602693f5 # v1.8.1
+      - uses: chainguard-dev/actions/goimports@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2
 
   golangci-lint:
     name: golangci-lint
@@ -124,10 +124,10 @@ jobs:
           check-latest: true
           cache: false
 
-      - uses: chainguard-dev/actions/trailing-space@a25ce483d875a46f4c837e85e32e0fda602693f5 # v1.8.1
+      - uses: chainguard-dev/actions/trailing-space@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2
         if: ${{ always() }}
 
-      - uses: chainguard-dev/actions/eof-newline@a25ce483d875a46f4c837e85e32e0fda602693f5 # v1.8.1
+      - uses: chainguard-dev/actions/eof-newline@d496b2ab65497cac13d77ccd5038b8aae7e8c43b # v1.8.2
         if: ${{ always() }}
 
       - uses: chainguard-actions/reviewdog-action-tflint@8460b34608a243499578ee28dcab26656b1287e9 # v1.29.0
@@ -136,7 +136,7 @@ jobs:
           github_token: ${{ secrets.github_token }}
           fail_level: warning
 
-      - uses: chainguard-actions/reviewdog-action-misspell@50843622d8f0e48fec770c4a7a7d1657efc64c08 # v1.31.0
+      - uses: chainguard-actions/reviewdog-action-misspell@f31accef3c70f60bae8cc3eb7b67c6c62cfc22d5 # v1.31.1
         if: ${{ always() }}
         with:
           github_token: ${{ secrets.github_token }}
